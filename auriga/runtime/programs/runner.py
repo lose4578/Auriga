@@ -727,6 +727,10 @@ class ProgramRunner:
         shutil.copyfile(Path(__file__).with_name('auriga_client.py'),workspace/'auriga_client.py')
         for module in self.services.workspace_modules:
             shutil.copyfile(Path(__file__).parents[2] / 'perception' / 'external' / module, workspace/module)
+            if module == 'scene3d_helpers.py':
+                vf_path = Path(__file__).parents[2] / 'perception' / 'external' / 'virtual_field.py'
+                if vf_path.is_file():
+                    shutil.copyfile(vf_path, workspace / 'virtual_field.py')
         source_ref = self.store.put_artifact(source.encode(),'program_source','text/x-python')
         job = {'job_id':identifier,'identity':deepcopy(self.store.identity),'status':'running','source_ref':source_ref,'source_sha256':hashlib.sha256(source.encode()).hexdigest(),'input_digest':digest(arguments),'correlation':correlation,'created_at':utc_now(),'timeout_s':timeout,'timeout_semantics':'work_wall_time_excluding_own_model_and_main_review_waits','call_limit':None,'allow_direct_actions':allow_direct,
                'action_authorization_scope':'this_program_invocation_only','review_decisions':{}}

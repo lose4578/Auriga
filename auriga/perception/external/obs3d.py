@@ -110,12 +110,19 @@ def developer_instructions(features) -> str:
     if getattr(features, "scene3d_observe", False) or getattr(features, "scene3d", False):
         parts.append(
             "When a scene3d point-cloud artifact handle is attached (or created via geometry_query kind='scene3d'), "
-            "you can inspect local 3D surface geometry in program_run with `import scene3d_helpers as s3; s3.load(artifact)` "
+            "you can inspect local 3D surface geometry and run 3D virtual spatial simulations in program_run with "
+            "`import scene3d_helpers as s3; s3.load(artifact)` "
             "(queries: s3.top_z, s3.table_z, s3.points_in_box, s3.points_in_cylinder, s3.nearest, s3.cluster_at_pixel, "
             "s3.surface_extrema(region) for unfiltered slot/hole/rim height extrema, "
             "s3.in_hand_axis(grasp_center_m) for 3D PCA yaw/tilt/posture and bottom_point_m / tip_offset_from_grasp_m "
             "of a held object near the fingertips using robot=True, "
-            "and s3.triangulate_rays(...) for two-camera stereo depth anchoring). Pass `obstacle_object_ids=['o1',...]` "
+            "s3.triangulate_rays(...) for two-camera stereo depth anchoring, "
+            "and `vf = s3.virtual_field(object_table)` for fast 3D OBB grasp/stage simulation: "
+            "`vf.evaluate_grasp(arm, position_m, angles_deg, target_id)` checks open-finger 3D collision, "
+            "`vertical_bite_m`, and `lateral_eccentricity_m`; `vf.solve_optimal_grasp(target_id, arm)` finds a "
+            "collision-free grasp pose (`position_m` in m, `angles_deg` in deg, `safe_lift_z_m` in m); "
+            "`vf.simulate_stages(stages)` simulates multi-stage grasp/transport/release and reports `min_path_clearance_m` "
+            "and `virtual_world_after`). Pass `obstacle_object_ids=['o1',...]` "
             "in `robot_action` when you want specific 3D objects from `object_table` converted into AABB obstacles."
         )
     if getattr(features, "vggt_height", False):
@@ -246,6 +253,29 @@ def _remember(runtime, observation_id, key, value):
         pass
 
 
+def _sync_virtual_field(runtime, bundle, table):
+    """将会话级虚拟空间模拟场 `runtime._virtual_spatial_field` 与最新观测的 object_table 及双臂位姿同步。"""
+    if not isinstance(table, dict):
+        return
+    try:
+        from .virtual_field import VirtualSpatialField
+        robot_state = (bundle or {}).get("robot_state") if isinstance(bundle, dict) else None
+        if not isinstance(robot_state, dict) and isinstance(bundle, dict) and bundle.get("robot_state_ref"):
+            resolve_art = getattr(getattr(runtime, "store", None), "resolve_artifact", None)
+            if callable(resolve_art):
+                import json
+                _, raw_bytes = resolve_art(bundle["robot_state_ref"])
+                robot_state = json.loads(raw_bytes)
+        vf = getattr(runtime, "_virtual_spatial_field", None)
+        if not isinstance(vf, VirtualSpatialField):
+            vf = VirtualSpatialField(objects=table, robot_state=robot_state)
+            runtime._virtual_spatial_field = vf
+        else:
+            vf.update_from_observation(table, robot_state=robot_state)
+    except Exception:
+        pass
+
+
 def attachments(runtime, bundle, correlation, *, reply="observe", before_observation_id=None):
     """Extra display parts for one model reply: [] or [StructuredText, (inputImage)].
 
@@ -296,6 +326,7 @@ def attachments(runtime, bundle, correlation, *, reply="observe", before_observa
                                           None, {})
             if isinstance(table, dict):
                 _remember(runtime, observation_id, "object_table", (table, overlay, result))
+                _sync_virtual_field(runtime, bundle, table)
         shown["object_table"] = table
         if isinstance(table, dict) and before_observation_id and before_observation_id != observation_id:
             before_obs = before_observation_id

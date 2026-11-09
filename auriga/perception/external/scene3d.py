@@ -53,6 +53,11 @@ API = [
     "and bottom_point_m / tip_offset_from_grasp_m of held-object points near the gripper (uses robot=True)",
     "surface_extrema(region, radius=0.04) -> unfiltered local 3D surface floor_z, rim_z, lowest_point_m, highest_point_m",
     "triangulate_rays(u1, v1, K1, T1, u2, v2, K2, T2) -> stereo 3D point_m and skew_gap_m from two calibrated views",
+    "virtual_field(objects=None, cloud=None, table_z=None) -> VirtualSpatialField for 3D OBB grasp/stage simulation",
+    "evaluate_grasp(arm, position_m, angles_deg, target_id=None) -> theoretically_graspable, vertical_bite_m, lateral_eccentricity_m, colliding_neighbor_ids, optimal_grasp_pose",
+    "solve_optimal_grasp(target_id, arm='right') -> collision-free position_m, angles_deg, safe_lift_z_m, neighbor_clearance_m",
+    "simulate_stages(stages) -> status, theoretically_valid, min_path_clearance_m, stage_reports, virtual_world_after",
+    "plan_pick_and_place(target_id, place_position_m, arm='right') -> 6-stage collision-checked stages and simulation",
     "common keyword args: min_conf=0.1 (confidence rank 0-1), robot=False, xyz=False (True also returns the points)",
 ]
 
@@ -331,6 +336,51 @@ def _execute_one_cloud_query(runtime, cloud, q, observation_id=None):
         if K1 is None or T1 is None or K2 is None or T2 is None:
             raise ValueError("triangulate_rays_requires_K_T_or_observation_cameras")
         return dict(op=op, **s3.triangulate_rays(p1[0], p1[1], K1, T1, p2[0], p2[1], K2, T2))
+    if op in ("evaluate_grasp", "solve_optimal_grasp", "simulate_stages", "plan_pick_and_place"):
+        eff_obs_id = _resolve_observation_id(runtime, observation_id=observation_id, q=q)
+        objs = q.get("objects") or q.get("object_table")
+        if objs is None and eff_obs_id:
+            from .pose_skill import attached_table
+            objs = attached_table(runtime, eff_obs_id)
+        vf = getattr(runtime, "_virtual_spatial_field", None) if objs is None else None
+        if vf is None:
+            vf = s3.VirtualSpatialField(objects=objs, cloud=cloud)
+        if op == "evaluate_grasp":
+            return dict(op=op, **vf.evaluate_grasp(
+                arm=str(q.get("arm") or "right"),
+                position_m=q.get("position_m") or q.get("grasp_position_m"),
+                angles_deg=q.get("angles_deg") or [0.0, 0.0, 0.0],
+                target_id=q.get("target_id") or q.get("object"),
+                open_aperture_m=float(q.get("open_aperture_m", 0.0888)),
+                contact_region=str(q.get("contact_region") or "pad_center"),
+            ))
+        if op == "solve_optimal_grasp":
+            tid = q.get("target_id") or q.get("object")
+            if not tid:
+                raise ValueError("solve_optimal_grasp_requires_target_id")
+            return dict(op=op, **vf.solve_optimal_grasp(
+                target_id=tid,
+                arm=str(q.get("arm") or "right"),
+                preferred_yaw_deg=q.get("preferred_yaw_deg"),
+                open_aperture_m=float(q.get("open_aperture_m", 0.0888)),
+            ))
+        if op == "simulate_stages":
+            stages = q.get("stages")
+            if not isinstance(stages, list):
+                raise ValueError("simulate_stages_requires_stages_list")
+            return dict(op=op, **vf.simulate_stages(stages, step_m=float(q.get("step_m", 0.015))))
+        if op == "plan_pick_and_place":
+            tid = q.get("target_id") or q.get("object")
+            place_pos = q.get("place_position_m") or q.get("position_m")
+            if not tid or not place_pos:
+                raise ValueError("plan_pick_and_place_requires_target_id_and_place_position_m")
+            return dict(op=op, **vf.plan_pick_and_place(
+                target_id=tid,
+                place_position_m=place_pos,
+                arm=str(q.get("arm") or "right"),
+                place_angles_deg=q.get("place_angles_deg"),
+                approach_clearance_m=float(q.get("approach_clearance_m", 0.06)),
+            ))
     raise ValueError(f"unsupported_scene3d_op:{op}")
 
 

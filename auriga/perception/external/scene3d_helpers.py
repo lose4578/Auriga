@@ -28,6 +28,11 @@ API = (  # same text as auriga/scene3d.py API (checked by tests/test_obs3d.py)
     "and bottom_point_m / tip_offset_from_grasp_m of held-object points near the gripper (uses robot=True)",
     "surface_extrema(region, radius=0.04) -> unfiltered local 3D surface floor_z, rim_z, lowest_point_m, highest_point_m",
     "triangulate_rays(u1, v1, K1, T1, u2, v2, K2, T2) -> stereo 3D point_m and skew_gap_m from two calibrated views",
+    "virtual_field(objects=None, cloud=None, table_z=None) -> VirtualSpatialField for 3D OBB grasp/stage simulation",
+    "evaluate_grasp(arm, position_m, angles_deg, target_id=None) -> theoretically_graspable, vertical_bite_m, lateral_eccentricity_m, colliding_neighbor_ids, optimal_grasp_pose",
+    "solve_optimal_grasp(target_id, arm='right') -> collision-free position_m, angles_deg, safe_lift_z_m, neighbor_clearance_m",
+    "simulate_stages(stages) -> status, theoretically_valid, min_path_clearance_m, stage_reports, virtual_world_after",
+    "plan_pick_and_place(target_id, place_position_m, arm='right') -> 6-stage collision-checked stages and simulation",
     "common keyword args: min_conf=0.1 (confidence rank 0-1), robot=False, xyz=False (True also returns the points)",
 )
 ABOVE_M = 0.004          # "above the table" threshold, same as the VGGT service
@@ -402,3 +407,75 @@ Cloud.cluster_at_pixel = lambda self, *a, **kw: cluster_at_pixel(*a, cloud=self,
 Cloud.in_hand_axis = lambda self, *a, **kw: in_hand_axis(*a, cloud=self, **kw)
 Cloud.in_hand_geometry = Cloud.in_hand_axis
 Cloud.surface_extrema = lambda self, *a, **kw: surface_extrema(*a, cloud=self, **kw)
+
+try:
+    from .virtual_field import (
+        OBB3D,
+        VirtualObject,
+        VirtualSpatialField,
+        evaluate_grasp as _vf_evaluate_grasp,
+        gripper_frame,
+        gripper_obbs,
+        obb_signed_distance,
+        plan_pick_and_place as _vf_plan_pick_and_place,
+        simulate_stages as _vf_simulate_stages,
+        solve_optimal_grasp as _vf_solve_optimal_grasp,
+        virtual_field as _vf_virtual_field,
+    )
+except ImportError:
+    from virtual_field import (
+        OBB3D,
+        VirtualObject,
+        VirtualSpatialField,
+        evaluate_grasp as _vf_evaluate_grasp,
+        gripper_frame,
+        gripper_obbs,
+        obb_signed_distance,
+        plan_pick_and_place as _vf_plan_pick_and_place,
+        simulate_stages as _vf_simulate_stages,
+        solve_optimal_grasp as _vf_solve_optimal_grasp,
+        virtual_field as _vf_virtual_field,
+    )
+
+
+def virtual_field(objects=None, cloud=None, table_z=None, robot_state=None):
+    """构建或更新 3D 虚拟空间数值模拟场 (VirtualSpatialField)，默认关联当前加载的 scene3d 点云。"""
+    eff_cloud = cloud if cloud is not None else _DEFAULT
+    return _vf_virtual_field(objects=objects, cloud=eff_cloud, table_z=table_z, robot_state=robot_state)
+
+
+def evaluate_grasp(arm="right", position_m=None, angles_deg=None, target_id=None, open_aperture_m=0.0888,
+                   contact_region="pad_center", objects=None, field=None):
+    """评估单次 3D 抓取位姿的理论可夹持性、竖直咬合高度、横向偏心距与周围邻近物体干涉。"""
+    return _vf_evaluate_grasp(
+        arm=arm, position_m=position_m, angles_deg=angles_deg, target_id=target_id,
+        open_aperture_m=open_aperture_m, contact_region=contact_region, objects=objects, field=field,
+    )
+
+
+def solve_optimal_grasp(target_id, arm="right", preferred_yaw_deg=None, open_aperture_m=0.0888, objects=None, field=None):
+    """求解目标物体无碰撞、最大咬合、最小偏心的最优 3D 抓取位姿。"""
+    return _vf_solve_optimal_grasp(
+        target_id=target_id, arm=arm, preferred_yaw_deg=preferred_yaw_deg,
+        open_aperture_m=open_aperture_m, objects=objects, field=field,
+    )
+
+
+def simulate_stages(stages, step_m=0.015, objects=None, field=None):
+    """在虚拟空间场内按顺序动态推演多阶段动作序列，检测路径碰撞并预测执行后物体新位置。"""
+    return _vf_simulate_stages(stages=stages, step_m=step_m, objects=objects, field=field)
+
+
+def plan_pick_and_place(target_id, place_position_m, arm="right", place_angles_deg=None,
+                        approach_clearance_m=0.06, objects=None, field=None):
+    """在虚拟空间场内自动规划并验证完整的 6 阶段抓取-抬升-搬运-放置-撤离动作列表。"""
+    return _vf_plan_pick_and_place(
+        target_id=target_id, place_position_m=place_position_m, arm=arm,
+        place_angles_deg=place_angles_deg, approach_clearance_m=approach_clearance_m,
+        objects=objects, field=field,
+    )
+
+
+Cloud.virtual_field = lambda self, objects=None, table_z=None, robot_state=None: virtual_field(
+    objects=objects, cloud=self, table_z=table_z, robot_state=robot_state
+)

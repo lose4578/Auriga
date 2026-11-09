@@ -177,7 +177,7 @@ def is_horizontally_elongated_graspable(length, width, top_z=None, bottom_z=None
 
 
 def grasp_hints_from(objects, support_z_m=None):
-    """为每个识别到的物体预计算零回合税抓取几何提示（仅对水平细长可抓单体输出 across_yaw_deg 及平躺立起 3D 姿态）。"""
+    """为每个识别到的物体预计算零回合税抓取几何提示（仅对水平细长可抓单体输出 across_yaw_deg 及平躺立起 3D 姿态，并基于虚拟空间场附带零碰撞 safe_grasp_pose）。"""
     from .pose_skill import (
         FINGERTIP_BELOW_PAD_M,
         MAX_OPENING_M,
@@ -185,6 +185,8 @@ def grasp_hints_from(objects, support_z_m=None):
         closure_yaws,
         nearest,
     )
+    from .virtual_field import VirtualSpatialField
+    vf = VirtualSpatialField(objects=objects, table_z=support_z_m)
     hints = {}
     for index, item in enumerate(objects):
         oid = "o%d" % (index + 1)
@@ -231,6 +233,14 @@ def grasp_hints_from(objects, support_z_m=None):
             if isinstance(tilt, (int, float)) and float(tilt) >= 55.0:
                 up = _posture_transition_angles(nearest(yaws, 0.0), "lying", "upright")
                 hint["stand_upright_angles_deg"] = up["release_angles_deg"]
+        if oid in vf.objects:
+            opt = vf.solve_optimal_grasp(oid)
+            hint["safe_grasp_pose"] = dict(
+                position_m=[_r(v, 3) for v in opt["position_m"]],
+                across_yaw_deg=opt["across_yaw_deg"],
+                neighbor_clearance_m=_r(opt["neighbor_clearance_m"], 3),
+                safe_transit_z_m=_r(opt["safe_transit_z_m"], 3),
+            )
         hints[oid] = hint
     return hints
 
