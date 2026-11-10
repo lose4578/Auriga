@@ -734,6 +734,38 @@ class MotionToleranceAndStallTests(unittest.TestCase):
         res_strict = self.execute_batch(adapter_strict, action_strict, plan_strict)
         self.assertEqual(res_strict['status'], 'failed', res_strict)
 
+        # 7. [P1-1] 显式设置 position_tolerance_m=0.003 时，5mm 末端偏差严禁被隐藏 5.5mm 阈值放行
+        adapter_3mm, _, _ = preview_adapter()
+        jaws(adapter_3mm)
+        action_3mm = batch([
+            move('s1', arm='left', angle=-0.25, position_tolerance_m=0.003, max_upward_dz_m=0.0),
+            move('s2', arm='left', angle=-0.50),
+        ])
+        plan_3mm = adapter_3mm.preview_batch(action_3mm)
+        s1_rec = adapter_3mm._batch_plans[plan_3mm['plan_id']]['stages']['s1']
+        target_3mm = deepcopy(s1_rec['target'])
+        shifted_pos = [
+            target_3mm['position_m'][0] + 0.005,
+            target_3mm['position_m'][1],
+            target_3mm['position_m'][2],
+        ]
+        s1_rec['planned_positions_m'] = [shifted_pos]
+        orig_3mm_state = adapter_3mm.state
+
+        def state_5mm_err():
+            st = orig_3mm_state()
+            if adapter_3mm.env.take_action_cnt[0] >= 1:
+                st['arms']['left']['ee_pose'] = {
+                    'position_m': list(shifted_pos),
+                    'quaternion_xyzw': list(target_3mm['quaternion_xyzw']),
+                }
+            return st
+
+        adapter_3mm.state = state_5mm_err
+        res_3mm = self.execute_batch(adapter_3mm, action_3mm, plan_3mm)
+        self.assertEqual(res_3mm['status'], 'failed', res_3mm)
+        self.assertEqual(res_3mm['failed_stage_id'], 's1')
+
 
 if __name__ == '__main__':
     unittest.main()

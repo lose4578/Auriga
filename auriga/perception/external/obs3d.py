@@ -256,9 +256,11 @@ def _remember(runtime, observation_id, key, value):
 def _sync_virtual_field(runtime, bundle, table):
     """将会话级虚拟空间模拟场 `runtime._virtual_spatial_field` 与最新观测的 object_table 及双臂位姿同步。"""
     if not isinstance(table, dict):
+        runtime._virtual_spatial_field = None
         return
     try:
         from .virtual_field import VirtualSpatialField
+        obs_id = (bundle or {}).get("observation_id") if isinstance(bundle, dict) else None
         robot_state = (bundle or {}).get("robot_state") if isinstance(bundle, dict) else None
         if not isinstance(robot_state, dict) and isinstance(bundle, dict) and bundle.get("robot_state_ref"):
             resolve_art = getattr(getattr(runtime, "store", None), "resolve_artifact", None)
@@ -272,8 +274,10 @@ def _sync_virtual_field(runtime, bundle, table):
             runtime._virtual_spatial_field = vf
         else:
             vf.update_from_observation(table, robot_state=robot_state)
+        vf.observation_id = obs_id
         runtime._virtual_field_last_error = None
     except Exception as error:
+        runtime._virtual_spatial_field = None
         runtime._virtual_field_last_error = f"{type(error).__name__}:{str(error)[:200]}"
 
 
@@ -328,6 +332,8 @@ def attachments(runtime, bundle, correlation, *, reply="observe", before_observa
             if isinstance(table, dict):
                 _remember(runtime, observation_id, "object_table", (table, overlay, result))
                 _sync_virtual_field(runtime, bundle, table)
+            else:
+                runtime._virtual_spatial_field = None
         shown["object_table"] = table
         if isinstance(table, dict) and before_observation_id and before_observation_id != observation_id:
             before_obs = before_observation_id
@@ -345,7 +351,10 @@ def attachments(runtime, bundle, correlation, *, reply="observe", before_observa
                 from ...runtime.actions.action_state_ledger import compute_object_table_delta, record_object_table_delta
                 delta = compute_object_table_delta(before_table, table)
                 if delta:
-                    shown["object_state_delta"] = delta
+                    delta_out = dict(delta, before_observation_id=before_obs, after_observation_id=observation_id)
+                    if before_obs != before_observation_id:
+                        delta_out["fallback_before_observation"] = True
+                    shown["object_state_delta"] = delta_out
                     record_object_table_delta(runtime, before_obs, observation_id, delta)
         _analysis_log(runtime, correlation, observation_id, reply, table, result, reused)
         diagnostics["object_table"] = dict(status=result.get("status"), reason=result.get("reason"),

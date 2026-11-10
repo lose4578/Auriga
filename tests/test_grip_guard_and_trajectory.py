@@ -329,6 +329,19 @@ class GripGuardAndTrajectoryTests(unittest.TestCase):
         self.assertEqual(res2["status"], "completed")
         self.assertEqual(res2["completed_stage_ids"], ["close", "lift", "carry", "place"])
 
+        # 3. [P2-1] 单阶段/末阶段显式设置 grip_guard 时不得因无后续 stage 而被静默关闭
+        adapter3, _, _ = preview_adapter()
+        jaws(adapter3)
+        adapter3.last_dispatched_goals["left"] = 1.0
+        action_single_close = batch([
+            jaw(identifier="close_only", goal=0.0, grip_guard_preset="rigid_object", min_aperture_m=0.005),
+        ])
+        plan3 = adapter3.preview_batch(action_single_close)
+        res3 = self.execute(adapter3, action_single_close, plan3)
+        self.assertEqual(res3["status"], "stopped")
+        self.assertTrue(res3["stage_results"]["close_only"]["grip_guard"]["triggered"])
+        self.assertEqual(res3["stage_results"]["close_only"]["grip_guard"]["reason"], "aperture_below_min_m")
+
 
 if __name__ == "__main__":
     unittest.main()

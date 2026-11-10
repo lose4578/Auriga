@@ -484,6 +484,7 @@ class VirtualObject:
         self._rel_centre_in_gripper: np.ndarray | None = None
         self.rel_axes_in_gripper: np.ndarray | None = None
         self._world_axes_override: np.ndarray | None = None
+        self._obb_center_override: np.ndarray | None = None
 
     @property
     def height_m(self) -> float:
@@ -513,17 +514,20 @@ class VirtualObject:
         return np.column_stack([u_long, u_short, u_vert])
 
     def obb(self) -> OBB3D:
-        """返回物体当前在世界坐标系下的 3D OBB（始终使用刚体固有半轴长 local_half_extents）。"""
+        """返回物体当前在世界坐标系下的 3D OBB（始终使用刚体固有半轴长 local_half_extents 与真实刚体旋转中心）。"""
         axes = self.world_axes()
-        z_mid = 0.5 * (self.top_z + self.bottom_z)
-        center = np.array([self.centre_m[0], self.centre_m[1], z_mid], dtype=np.float64)
+        if self._obb_center_override is not None:
+            center = np.asarray(self._obb_center_override, dtype=np.float64)
+        else:
+            z_mid = 0.5 * (self.top_z + self.bottom_z)
+            center = np.array([self.centre_m[0], self.centre_m[1], z_mid], dtype=np.float64)
         return OBB3D(center, axes, self.local_half_extents, label=self.id)
 
     def footprint_corners_xy(self) -> np.ndarray:
         """返回物体水平截面四个角点的世界坐标 (4, 3)。"""
         axes = self.world_axes()
         u_long, u_short = axes[:, 0], axes[:, 1]
-        c = np.asarray(self.centre_m, dtype=np.float64)
+        c = self.obb().center
         hl, hw = 0.5 * self.length, 0.5 * self.width
         return np.array(
             [
@@ -555,6 +559,7 @@ class VirtualObject:
         self._world_axes_override = new_axes
         new_centre = pad_c + self._rel_centre_in_gripper @ g_axes.T
         new_obb_c = pad_c + self.rel_offset_in_gripper @ g_axes.T
+        self._obb_center_override = np.asarray(new_obb_c, dtype=np.float64)
         z_extent = float(np.abs(new_axes[2, :]) @ self.local_half_extents)
         self.centre_m = [float(v) for v in new_centre]
         self.top_z = float(new_obb_c[2] + z_extent)
@@ -571,9 +576,10 @@ class VirtualObject:
         z_extent = float(np.abs(axes[2, :]) @ self.local_half_extents)
         sup_z = float(support_z)
         obb_z = sup_z + z_extent
-        old_obb_z = 0.5 * (self.top_z + self.bottom_z)
-        dz = obb_z - old_obb_z
+        old_obb_c = self.obb().center
+        dz = obb_z - float(old_obb_c[2])
         self.centre_m[2] = float(self.centre_m[2] + dz)
+        self._obb_center_override = np.array([float(old_obb_c[0]), float(old_obb_c[1]), float(obb_z)], dtype=np.float64)
         self.bottom_z = sup_z
         self.top_z = float(sup_z + 2.0 * z_extent)
         self.support = support_id
@@ -584,13 +590,14 @@ class VirtualObject:
         self.virtual_moved = True
 
     def to_dict(self) -> dict:
-        return dict(
+        out = dict(
             id=self.id,
             centre_m=_r(self.centre_m, 4),
             top_z=_r(self.top_z, 4),
             bottom_z=_r(self.bottom_z, 4),
             length=_r(self.length, 4),
             width=_r(self.width, 4),
+            intrinsic_height_m=_r(self.intrinsic_height_m, 4),
             yaw_deg=_r(self.yaw_deg, 1),
             tilt_deg=_r(self.tilt_deg, 1) if self.tilt_deg is not None else None,
             support=self.support,
@@ -599,6 +606,11 @@ class VirtualObject:
             virtual_moved=self.virtual_moved,
             occluded=self.occluded,
         )
+        if self._world_axes_override is not None:
+            out["world_axes"] = [[round(float(v), 6) for v in row] for row in self._world_axes_override]
+        if self._obb_center_override is not None:
+            out["obb_center_m"] = _r(self._obb_center_override, 4)
+        return out
 
 
 def _parse_virtual_object(item, index: int = 0, table_z: float = DEFAULT_TABLE_Z_M, columns=None) -> VirtualObject | None:
@@ -640,7 +652,8 @@ def _parse_virtual_object(item, index: int = 0, table_z: float = DEFAULT_TABLE_Z
     if top_z < bottom_z:
         top_z, bottom_z = bottom_z, top_z
     tilt = row.get("tilt_deg") if _num(row.get("tilt_deg")) else row.get("axis_tilt_deg")
-    return VirtualObject(
+    intrinsic_h = row.get("intrinsic_height_m") if _num(row.get("intrinsic_height_m")) else None
+    obj = VirtualObject(
         oid=oid,
         centre_m=centre,
         top_z=top_z,
@@ -653,7 +666,18 @@ def _parse_virtual_object(item, index: int = 0, table_z: float = DEFAULT_TABLE_Z
         quality=quality,
         held_by_arm=held_by,
         occluded=bool(row.get("occluded", False)),
+        intrinsic_height_m=intrinsic_h,
     )
+    obj.virtual_moved = bool(row.get("virtual_moved", False))
+    raw_axes = row.get("world_axes")
+    if isinstance(raw_axes, (list, tuple, np.ndarray)) and len(raw_axes) == 3:
+        arr_axes = np.asarray(raw_axes, dtype=np.float64)
+        if arr_axes.shape == (3, 3) and np.all(np.isfinite(arr_axes)):
+            obj._world_axes_override = arr_axes
+    raw_obb_c = row.get("obb_center_m")
+    if isinstance(raw_obb_c, (list, tuple, np.ndarray)) and len(raw_obb_c) == 3 and all(_num(v) for v in raw_obb_c):
+        obj._obb_center_override = np.asarray(raw_obb_c, dtype=np.float64)
+    return obj
 
 
 # ------------------------------------------------------------------ 虚拟空间数值模拟场 (VirtualSpatialField)
@@ -779,10 +803,10 @@ class VirtualSpatialField:
                         )
                 new_objects[parsed.id] = parsed
 
-        # 实时同步持物状态：若某臂上一轮持物且当前夹爪未张开释放 (aperture > 1.5mm 且 < 75mm)，用实测末端位姿更新持物 OBB
+        # 实时同步持物状态：若某臂上一轮已确认持物且当前夹爪未张开释放 (aperture < 75mm)，用实测末端位姿更新持物 OBB（保留薄物/纸张等小开度持握）
         for arm, held_obj in prev_held.items():
             ap = self.arm_apertures_m.get(arm, MAX_OPENING_M)
-            if 0.0015 < ap < 0.075 and not any(o.held_by_arm == arm for o in new_objects.values()):
+            if ap < 0.075 and not any(o.held_by_arm == arm for o in new_objects.values()):
                 pose = self.arm_poses.get(arm)
                 if pose is not None:
                     g_frame = gripper_frame(pose["position_m"], pose["angles_deg"])
@@ -1292,6 +1316,21 @@ class VirtualSpatialField:
                     if isinstance(wp.get("angles_deg"), (list, tuple)) and len(wp["angles_deg"]) == 3:
                         ang = [float(v) for v in wp["angles_deg"]]
 
+        if kind == "move":
+            unsupported_keys = [
+                k for k in ("pose_world_m", "quat_wxyz", "orientation_rpy_deg", "rpy_deg", "euler_deg", "quaternion_wxyz")
+                if k in stage
+            ]
+            if unsupported_keys:
+                raise ValueError(
+                    f"Stage '{stage_id}' uses unsupported pose field(s) {unsupported_keys}; "
+                    "use grasp_position_m + angles_deg or position_m + quaternion_xyzw."
+                )
+            if pos is None or ang is None:
+                raise ValueError(
+                    f"Move stage '{stage_id}' requires complete target pose "
+                    "(grasp_position_m + angles_deg, or position_m + quaternion_xyzw, or waypoints)."
+                )
         if pos is None:
             pos = list(cur_pose["position_m"])
         if ang is None:
@@ -1422,17 +1461,17 @@ class VirtualSpatialField:
                         if d < -0.002 and other.id not in colliding_ids:
                             colliding_ids.append(other.id)
 
+                end_frame = gripper_frame(
+                    target_pos,
+                    target_ang,
+                    contact_region=spec["contact_region"],
+                    contact_depth_m=spec["contact_depth_m"],
+                )
                 sim.arm_poses[arm] = {
-                    "position_m": [float(v) for v in target_pos],
+                    "position_m": [float(v) for v in end_frame["pad_center_m"]],
                     "angles_deg": [float(v) for v in target_ang],
                 }
                 if held_obj is not None:
-                    end_frame = gripper_frame(
-                        target_pos,
-                        target_ang,
-                        contact_region=spec["contact_region"],
-                        contact_depth_m=spec["contact_depth_m"],
-                    )
                     held_obj.update_from_gripper(end_frame)
 
             if stage_min_clearance < overall_min_clearance:
@@ -1473,30 +1512,42 @@ class VirtualSpatialField:
 
             # 2. 处理闭爪抓取事件
             if was_open and goal_norm is not None and goal_norm < 0.5:
+                cmd_ap = float(np.clip(goal_norm, 0.0, 1.0)) * MAX_OPENING_M
+                grasp_pos = sim.arm_poses[arm]["position_m"] if kind == "move" else target_pos
+                grasp_region = "pad_center" if kind == "move" else spec["contact_region"]
+                grasp_depth = None if kind == "move" else spec["contact_depth_m"]
                 grasp_eval = sim.evaluate_grasp(
                     arm=arm,
-                    position_m=target_pos,
+                    position_m=grasp_pos,
                     angles_deg=target_ang,
                     open_aperture_m=prev_ap,
-                    contact_region=spec["contact_region"],
-                    contact_depth_m=spec["contact_depth_m"],
+                    contact_region=grasp_region,
+                    contact_depth_m=grasp_depth,
                 )
+                proj_span = float(grasp_eval.get("projected_span_m") or 0.0)
+                closes_onto_object = cmd_ap <= proj_span + 0.002
+                if not closes_onto_object:
+                    grasp_eval = dict(grasp_eval, theoretically_graspable=False)
+                    reasons_list = list(grasp_eval.get("failure_reasons") or [])
+                    if "commanded_aperture_exceeds_object_span" not in reasons_list:
+                        reasons_list.append("commanded_aperture_exceeds_object_span")
+                    grasp_eval["failure_reasons"] = reasons_list
                 stage_entry["grasp_evaluation"] = grasp_eval
                 if grasp_eval["theoretically_graspable"] and grasp_eval["target_id"] in sim.objects:
                     grasped = sim.objects[grasp_eval["target_id"]]
                     g_frame = gripper_frame(
-                        target_pos,
+                        grasp_pos,
                         target_ang,
-                        contact_region=spec["contact_region"],
-                        contact_depth_m=spec["contact_depth_m"],
+                        contact_region=grasp_region,
+                        contact_depth_m=grasp_depth,
                     )
                     grasped.attach_to_gripper(arm, g_frame)
-                    sim.arm_apertures_m[arm] = max(float(grasp_eval["projected_span_m"] or 0.01), 0.002)
+                    sim.arm_apertures_m[arm] = max(proj_span, 0.002)
                     stage_entry["grasped_object_id"] = grasped.id
                 else:
                     has_risk = True
                     stage_entry["status"] = "grasp_risk"
-                    sim.arm_apertures_m[arm] = float(goal_norm) * MAX_OPENING_M
+                    sim.arm_apertures_m[arm] = cmd_ap
                     opt = grasp_eval.get("optimal_grasp_pose")
                     if opt is not None:
                         suggested_fixes.append(
