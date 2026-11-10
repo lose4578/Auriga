@@ -445,19 +445,22 @@ def virtual_field(objects=None, cloud=None, table_z=None, robot_state=None):
 
 
 def evaluate_grasp(arm="right", position_m=None, angles_deg=None, target_id=None, open_aperture_m=0.0888,
-                   contact_region="pad_center", objects=None, field=None):
-    """评估单次 3D 抓取位姿的理论可夹持性、竖直咬合高度、横向偏心距与周围邻近物体干涉。"""
+                   contact_region="pad_center", contact_depth_m=None, objects=None, field=None):
+    """评估单次 3D 抓取位姿的理论可夹持性、竖直咬合高度 (m)、横向偏心距 (m) 与邻近物体 3D OBB 干涉。"""
     return _vf_evaluate_grasp(
         arm=arm, position_m=position_m, angles_deg=angles_deg, target_id=target_id,
-        open_aperture_m=open_aperture_m, contact_region=contact_region, objects=objects, field=field,
+        open_aperture_m=open_aperture_m, contact_region=contact_region, contact_depth_m=contact_depth_m,
+        objects=objects, field=field,
     )
 
 
-def solve_optimal_grasp(target_id, arm="right", preferred_yaw_deg=None, open_aperture_m=0.0888, objects=None, field=None):
-    """求解目标物体无碰撞、最大咬合、最小偏心的最优 3D 抓取位姿。"""
+def solve_optimal_grasp(target_id, arm="right", preferred_yaw_deg=None, open_aperture_m=0.0888,
+                        contact_region="pad_center", contact_depth_m=None, objects=None, field=None):
+    """在候选网格中搜索目标物体无碰撞、最大咬合、最小偏心的候选 3D 抓取位姿 (返回 position_m, angles_deg, theoretically_graspable, failure_reasons 等)。"""
     return _vf_solve_optimal_grasp(
         target_id=target_id, arm=arm, preferred_yaw_deg=preferred_yaw_deg,
-        open_aperture_m=open_aperture_m, objects=objects, field=field,
+        open_aperture_m=open_aperture_m, contact_region=contact_region, contact_depth_m=contact_depth_m,
+        objects=objects, field=field,
     )
 
 

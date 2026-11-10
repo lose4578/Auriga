@@ -261,6 +261,164 @@ class VirtualSpatialFieldTest(unittest.TestCase):
         self.assertEqual(len(plan_s3["stages"]), 6)
         self.assertTrue(plan_s3["simulation"]["theoretically_valid"])
 
+    def test_adversarial_counterexamples_from_codex_review(self):
+        """针对对抗审查发现的全部 9 类几何、状态与契约反例的回归测试。"""
+        from auriga.perception.external.virtual_field import (
+            angles_deg_to_quat_wxyz,
+            flange_pose_to_grasp_pose,
+            quat_wxyz_to_matrix,
+        )
+        from auriga.runtime.actions.robot_action_schema import _STAGE_SCHEMAS
+
+        # 反例 1: 86x86mm 不可抓物体不得在 grasp_hints_from 中输出 safe_grasp_pose，且 solve_optimal_grasp 保留 failure_reasons
+        wide_objs = [
+            dict(centre_m=[0.0, 0.0, 0.780], top_z_m=0.795, bottom_z_m=0.765, length_m=0.086, width_m=0.086, yaw_deg=0.0),
+        ]
+        wide_hints = object_table.grasp_hints_from(wide_objs, support_z_m=0.765)
+        self.assertNotIn("safe_grasp_pose", wide_hints["o1"])
+        vf_wide = VirtualSpatialField(objects=wide_objs, table_z=0.765)
+        opt_wide = vf_wide.solve_optimal_grasp("o1")
+        self.assertFalse(opt_wide["theoretically_graspable"])
+        self.assertTrue(len(opt_wide["failure_reasons"]) > 0)
+
+        # 反例 2: plan_pick_and_place 生成的 stages 必须使用 gripper_goal_normalized 并通过正式 schema 属性集校验，
+        # 且直接将含 gripper_goal_normalized 的公开阶段传入 simulate_stages 能正确抓起并移动物体
+        vf = VirtualSpatialField(objects=self.base_table)
+        plan = vf.plan_pick_and_place("o1", [0.18, -0.20, 0.780], arm="right", approach_clearance_m=0.01)
+        self.assertAlmostEqual(plan["stages"][4]["grasp_position_m"][2] + 0.01, plan["stages"][4]["grasp_position_m"][2] + 0.01)
+        allowed_move_keys = set(_STAGE_SCHEMAS["move"]["properties"].keys())
+        for st in plan["stages"]:
+            self.assertNotIn("gripper", st)
+            self.assertTrue(set(st.keys()).issubset(allowed_move_keys), st.keys())
+        self.assertEqual(plan["stages"][0]["gripper_goal_normalized"], 1.0)
+        self.assertEqual(plan["stages"][1]["gripper_goal_normalized"], 0.0)
+        self.assertEqual(plan["stages"][4]["gripper_goal_normalized"], 1.0)
+        world_after = {o["id"]: o for o in plan["simulation"]["virtual_world_after"]}
+        self.assertTrue(world_after["o1"]["virtual_moved"])
+        self.assertAlmostEqual(world_after["o1"]["centre_m"][0], 0.18, places=3)
+
+        # 反例 3: 140x26x30mm 刚体在 [0, 45, 0] 倾斜姿态下连续 4 次 update_from_gripper 尺寸严格幂等，绝不膨胀；
+        # 且旋转立起释放后保留 3D 姿态
+        obj = vf.objects["o1"]
+        gf_init = gripper_frame([0.10, -0.20, 0.780], [0.0, 0.0, -60.0])
+        obj.attach_to_gripper("right", gf_init)
+        gf_tilt = gripper_frame([0.10, -0.20, 0.880], [0.0, 45.0, -60.0])
+        heights = []
+        for _ in range(4):
+            obj.update_from_gripper(gf_tilt)
+            heights.append(round(obj.top_z - obj.bottom_z, 6))
+        self.assertEqual(heights[0], heights[1])
+        self.assertEqual(heights[1], heights[2])
+        self.assertEqual(heights[2], heights[3])
+        self.assertAlmostEqual(obj.intrinsic_height_m, 0.030, places=6)
+        obj.detach_from_gripper(support_z=0.765, support_id="table")
+        self.assertAlmostEqual(obj.top_z - obj.bottom_z, heights[0], places=5)
+        self.assertAlmostEqual(obj.bottom_z, 0.765, places=6)
+
+        # 反例 4: 30x30x200mm 竖直柱体以 [0, 90, 0] 侧向抓取（闭合轴沿竖直 200mm 方向）被判定为不可抓且手指穿模，
+        # 手掌穿入目标本体也被检出
+        tall_table = dict(
+            columns=COLUMNS,
+            table_z=0.765,
+            rows=[
+                ["o1", [0.0, 0.0, 0.865], 0.965, 0.765, 0.030, 0.030, 0.0, 2.0, "table", "ok"],
+            ],
+        )
+        vf_tall = VirtualSpatialField(objects=tall_table)
+        side_eval = vf_tall.evaluate_grasp("right", [0.0, 0.0, 0.865], [0.0, 90.0, 0.0], target_id="o1")
+        self.assertFalse(side_eval["theoretically_graspable"], side_eval)
+        self.assertTrue(side_eval["finger_hits_target"])
+        self.assertIn("projected_span_exceeds_opening", side_eval["failure_reasons"])
+        self.assertIn("finger_hits_target_on_descent", side_eval["failure_reasons"])
+
+        # 下探过深使手掌穿入高柱体顶部 (z=0.865 时手掌中心在 0.865 + 0.0975 = 0.9625，若压低到 z=0.830 则手掌穿入 0.965 以下)
+        palm_eval = vf_tall.evaluate_grasp("right", [0.0, 0.0, 0.830], [0.0, 0.0, 0.0], target_id="o1")
+        self.assertFalse(palm_eval["theoretically_graspable"])
+        self.assertTrue(palm_eval["palm_hits_target"])
+        self.assertIn("palm_collides_with_target", palm_eval["failure_reasons"])
+
+        # 反例 5: 原地旋转 0 -> 90 deg 途中 22.5 deg 存在障碍物时被检出 path_collision；下探至桌面以下 z=0.700m 被检出 table 碰撞
+        rad22 = math.radians(22.5) if "math" in globals() else np.radians(22.5)
+        obs_rot_pos = [0.046 * float(np.cos(rad22)), 0.046 * float(np.sin(rad22)), 0.800]
+        rot_table = dict(
+            columns=COLUMNS,
+            table_z=0.765,
+            rows=[
+                ["o_obs", obs_rot_pos, 0.820, 0.765, 0.020, 0.020, 0.0, None, "table", "ok"],
+            ],
+        )
+        vf_rot = VirtualSpatialField(
+            objects=rot_table,
+            robot_state={"arms": {"right": {"grasp_pose": {"position_m": [0.0, 0.0, 0.790], "angles_deg": [0.0, 0.0, 0.0]}}}},
+        )
+        sim_rot = vf_rot.simulate_stages([
+            {"id": "spin", "arm": "right", "kind": "move", "grasp_position_m": [0.0, 0.0, 0.790], "angles_deg": [0.0, 0.0, 90.0]},
+        ])
+        self.assertEqual(sim_rot["status"], "risk_detected")
+        self.assertIn("o_obs", sim_rot["stage_reports"][0]["colliding_objects"])
+
+        sim_table_hit = vf_rot.simulate_stages([
+            {"id": "dive", "arm": "right", "kind": "move", "grasp_position_m": [0.0, -0.20, 0.700], "angles_deg": [0.0, 0.0, 0.0]},
+        ])
+        self.assertEqual(sim_table_hit["status"], "risk_detected")
+        self.assertIn("table", sim_table_hit["stage_reports"][0]["colliding_objects"])
+
+        # 反例 6: 法兰位姿 position_m + quaternion_xyzw 与自定义 contact_depth_m 精确解析
+        q_wxyz = angles_deg_to_quat_wxyz(0.0, 0.0, -60.0)
+        R_mat = quat_wxyz_to_matrix(q_wxyz)
+        flange_pos = np.array([0.10, -0.20, 0.780]) - (0.1501 - 0.05) * R_mat[:, 0]
+        quat_xyzw = [float(q_wxyz[1]), float(q_wxyz[2]), float(q_wxyz[3]), float(q_wxyz[0])]
+        spec = VirtualSpatialField._extract_stage_spec(
+            {
+                "id": "flange_move",
+                "arm": "right",
+                "kind": "move",
+                "position_m": flange_pos.tolist(),
+                "quaternion_xyzw": quat_xyzw,
+                "contact_depth_m": 0.05,
+            },
+            {},
+            {},
+        )
+        np.testing.assert_allclose(spec["position_m"], [0.10, -0.20, 0.780], atol=1e-5)
+        np.testing.assert_allclose(spec["angles_deg"], [0.0, 0.0, -60.0], atol=1e-4)
+        self.assertAlmostEqual(spec["contact_depth_m"], 0.05, places=5)
+
+        # 反例 7: 真实 RoboDojo gripper: {"position_m": [0.005, 0.005]} 被正确解析为 0.010m 开度
+        vf_robo = VirtualSpatialField(
+            objects=self.base_table,
+            robot_state={
+                "arms": {
+                    "right": {
+                        "grasp_pose": {"position_m": [0.10, -0.20, 0.780], "angles_deg": [0.0, 0.0, -60.0]},
+                        "gripper": {"position_m": [0.005, 0.005], "goal_normalized": 0.0},
+                    }
+                }
+            },
+        )
+        self.assertAlmostEqual(vf_robo.arm_apertures_m["right"], 0.010, places=5)
+
+        # 反例 8: 斜交分离 OBB 的 obb_signed_distance 与网格采样精确欧氏距离一致
+        r1 = quat_wxyz_to_matrix(angles_deg_to_quat_wxyz(25.0, -35.0, 40.0))
+        r2 = quat_wxyz_to_matrix(angles_deg_to_quat_wxyz(-50.0, 20.0, -70.0))
+        b1 = OBB3D([0.0, 0.0, 0.0], r1, [0.04, 0.015, 0.025])
+        b2 = OBB3D([0.055, 0.032, 0.018], r2, [0.035, 0.012, 0.020])
+        d_obb = obb_signed_distance(b1, b2)
+        # 在 b1 表面密集采样并 clamp 到 b2 验证欧氏距离
+        grid = np.linspace(-1.0, 1.0, 25)
+        u, v, w = np.meshgrid(grid, grid, grid, indexing="ij")
+        pts1 = b1.center[None, :] + (np.column_stack([u.ravel(), v.ravel(), w.ravel()]) * b1.half_extents[None, :]) @ b1.axes.T
+        clamped2 = b2.clamp_points(pts1)
+        clamped1 = b1.clamp_points(clamped2)
+        d_ref = float(np.min(np.linalg.norm(clamped1 - clamped2, axis=1)))
+        self.assertAlmostEqual(d_obb, d_ref, delta=5e-4)
+
+        # 反例 9: 显式传入不存在的 target_id="o99" 时绝不静默回退到 XY 最近邻物体
+        self.assertIsNone(vf.find_target_object("o99", position_m=[0.10, -0.20, 0.780]))
+        ev_missing = vf.evaluate_grasp("right", [0.10, -0.20, 0.780], [0.0, 0.0, -60.0], target_id="o99")
+        self.assertFalse(ev_missing["theoretically_graspable"])
+        self.assertIn("no_target_object_in_reach", ev_missing["failure_reasons"])
+
 
 if __name__ == "__main__":
     unittest.main()

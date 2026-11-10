@@ -161,6 +161,26 @@ def quat_wxyz_to_angles_deg(quat_wxyz: np.ndarray) -> tuple[float, float, float]
     return (math.degrees(pitch) + 0.0, math.degrees(roll) + 0.0, math.degrees(yaw) + 0.0)
 
 
+def flange_pose_to_grasp_pose(
+    position_m,
+    quaternion_xyzw,
+    contact_region: str = "pad_center",
+    contact_depth_m: float | None = None,
+) -> dict:
+    """将 link6 法兰位姿 (position_m, quaternion_xyzw) 转换为指垫目标位姿 (grasp_position_m, angles_deg)。"""
+    flange_pos = np.asarray(position_m, dtype=np.float64).reshape(3)
+    qx, qy, qz, qw = (float(v) for v in np.asarray(quaternion_xyzw, dtype=np.float64).reshape(4))
+    quat_wxyz = np.array([qw, qx, qy, qz], dtype=np.float64)
+    p_deg, r_deg, y_deg = quat_wxyz_to_angles_deg(quat_wxyz)
+    u_app = quat_wxyz_to_matrix(quat_wxyz)[:, 0]
+    depth = float(contact_depth_m) if contact_depth_m is not None else float(CONTACT_DEPTH_PRESETS_M.get(contact_region, 0.0))
+    grasp_pos = flange_pos + (GRASP_POINT_OFFSET_M - depth) * u_app
+    return dict(
+        grasp_position_m=[float(grasp_pos[0]), float(grasp_pos[1]), float(grasp_pos[2])],
+        angles_deg=[float(p_deg), float(r_deg), float(y_deg)],
+    )
+
+
 def gripper_frame(
     position_m,
     angles_deg,
@@ -202,10 +222,47 @@ def gripper_frame(
         tangent_dir=tangent_dir,
         axes=axes,
         quat_wxyz=quat,
+        contact_region=contact_region,
+        contact_depth_m=depth,
     )
 
 
 # ------------------------------------------------------------------ 三维定向包围盒 (3D OBB) 与碰撞/距离计算
+_OBB_VERTEX_SIGNS = np.array(
+    [
+        [-1.0, -1.0, -1.0],
+        [-1.0, -1.0, 1.0],
+        [-1.0, 1.0, -1.0],
+        [-1.0, 1.0, 1.0],
+        [1.0, -1.0, -1.0],
+        [1.0, -1.0, 1.0],
+        [1.0, 1.0, -1.0],
+        [1.0, 1.0, 1.0],
+    ],
+    dtype=np.float64,
+)
+
+# 12 条棱连接的顶点索引对
+_OBB_EDGE_PAIRS = np.array(
+    [
+        [0, 1], [2, 3], [4, 5], [6, 7],
+        [0, 2], [1, 3], [4, 6], [5, 7],
+        [0, 4], [1, 5], [2, 6], [3, 7],
+    ],
+    dtype=np.int64,
+)
+
+# 6 个面的顶点索引（每面 4 个共面顶点，按逆时针顺序）
+_OBB_FACE_QUADS = (
+    (0, 1, 3, 2),
+    (4, 6, 7, 5),
+    (0, 4, 5, 1),
+    (2, 3, 7, 6),
+    (0, 2, 6, 4),
+    (1, 5, 7, 3),
+)
+
+
 class OBB3D:
     """三维定向包围盒 (Oriented Bounding Box)。"""
 
@@ -217,20 +274,7 @@ class OBB3D:
 
     def vertices(self) -> np.ndarray:
         """返回 OBB 的 8 个三维顶点坐标 (8, 3)。"""
-        signs = np.array(
-            [
-                [-1, -1, -1],
-                [-1, -1, 1],
-                [-1, 1, -1],
-                [-1, 1, 1],
-                [1, -1, -1],
-                [1, -1, 1],
-                [1, 1, -1],
-                [1, 1, 1],
-            ],
-            dtype=np.float64,
-        )
-        scaled = signs * self.half_extents[None, :]
+        scaled = _OBB_VERTEX_SIGNS * self.half_extents[None, :]
         return self.center[None, :] + scaled @ self.axes.T
 
     def aabb(self) -> tuple[np.ndarray, np.ndarray]:
@@ -244,13 +288,19 @@ class OBB3D:
         clamped = np.clip(local, -self.half_extents, self.half_extents)
         return self.center + clamped @ self.axes.T
 
+    def clamp_points(self, points_m: np.ndarray) -> np.ndarray:
+        """批量将形状为 (N, 3) 的世界系三维点集钳位到本 OBB 表面或内部最近点。"""
+        local = (points_m - self.center[None, :]) @ self.axes
+        clamped = np.clip(local, -self.half_extents[None, :], self.half_extents[None, :])
+        return self.center[None, :] + clamped @ self.axes.T
+
 
 def obb_signed_distance(obb_a: OBB3D, obb_b: OBB3D) -> float:
     """计算两个 3D OBB 之间的有符号距离 (单位: m)。
 
     返回值:
         > 0: 两包围盒分离，返回最小欧氏净空距离 (m)；
-        <= 0: 两包围盒发生实体穿透/碰撞，返回负的最大穿透深度 (m)。
+        <= 0: 两包围盒发生实体穿透/碰撞，返回负的最小分离平移深度 (m)。
     """
     diff = obb_b.center - obb_a.center
     A = obb_a.axes
@@ -267,7 +317,7 @@ def obb_signed_distance(obb_a: OBB3D, obb_b: OBB3D) -> float:
             if norm > 1e-6:
                 cross_axes.append(c / norm)
     if cross_axes:
-        L_all = np.column_stack([A, B, np.column_stack(cross_axes)])  # (3, K)
+        L_all = np.column_stack([A, B, np.column_stack(cross_axes)])
     else:
         L_all = np.column_stack([A, B])
 
@@ -279,14 +329,45 @@ def obb_signed_distance(obb_a: OBB3D, obb_b: OBB3D) -> float:
     if max_gap <= 0.0:
         return max_gap
 
-    # 分离状态下使用交替凸投影求解精确三维欧氏最近点距离
-    pb = obb_b.center.copy()
-    pa = obb_a.center.copy()
-    for _ in range(6):
-        pa = obb_a.clamp_point(pb)
-        pb = obb_b.clamp_point(pa)
-    euclid = float(np.linalg.norm(pa - pb))
-    return max(euclid, max_gap)
+    # 分离状态下：结合双方 8 顶点钳位 + 12x12=144 对棱线段最近点 + 批量交替凸投影，求解精确三维欧氏距离
+    va = obb_a.vertices()
+    vb = obb_b.vertices()
+    p0 = va[_OBB_EDGE_PAIRS[:, 0]]  # (12, 3)
+    p1 = va[_OBB_EDGE_PAIRS[:, 1]]
+    q0 = vb[_OBB_EDGE_PAIRS[:, 0]]  # (12, 3)
+    q1 = vb[_OBB_EDGE_PAIRS[:, 1]]
+    u = p1 - p0  # (12, 3)
+    v = q1 - q0  # (12, 3)
+    uu = np.sum(u * u, axis=1)[:, None]  # (12, 1)
+    vv = np.sum(v * v, axis=1)[None, :]  # (1, 12)
+    uv = u @ v.T  # (12, 12)
+    w0 = p0[:, None, :] - q0[None, :, :]  # (12, 12, 3)
+    uw = np.sum(u[:, None, :] * w0, axis=2)  # (12, 12)
+    vw = np.sum(v[None, :, :] * w0, axis=2)  # (12, 12)
+    denom = uu * vv - uv * uv
+    s = np.where(denom > 1e-12, np.clip((uv * vw - vv * uw) / np.maximum(denom, 1e-12), 0.0, 1.0), 0.0)
+    t = np.clip((uv * s + vw) / np.maximum(vv, 1e-12), 0.0, 1.0)
+    s = np.clip((uv * t - uw) / np.maximum(uu, 1e-12), 0.0, 1.0)
+    t = np.clip((uv * s + vw) / np.maximum(vv, 1e-12), 0.0, 1.0)
+    edge_pa = (p0[:, None, :] + s[:, :, None] * u[:, None, :]).reshape(-1, 3)
+    edge_pb = (q0[None, :, :] + t[:, :, None] * v[None, :, :]).reshape(-1, 3)
+
+    seeds_a = np.vstack([obb_a.center[None, :], va, obb_a.clamp_points(vb), edge_pa])
+    seeds_b = np.vstack([obb_b.center[None, :], obb_b.clamp_points(va), vb, edge_pb])
+    pa = obb_a.clamp_points(seeds_b)
+    pb = obb_b.clamp_points(pa)
+    for _ in range(8):
+        pa = obb_a.clamp_points(pb)
+        pb = obb_b.clamp_points(pa)
+    pa_alt = obb_a.clamp_points(seeds_a)
+    pb_alt = obb_b.clamp_points(pa_alt)
+    for _ in range(8):
+        pa_alt = obb_a.clamp_points(pb_alt)
+        pb_alt = obb_b.clamp_points(pa_alt)
+    d1 = float(np.min(np.linalg.norm(pa - pb, axis=1)))
+    d2 = float(np.min(np.linalg.norm(pa_alt - pb_alt, axis=1)))
+    d_edge = float(np.min(np.linalg.norm(edge_pa - edge_pb, axis=1)))
+    return max(min(d1, d2, d_edge), max_gap)
 
 
 def gripper_obbs(
@@ -328,8 +409,8 @@ def gripper_obbs(
     )
 
 
-def _clip_polygon_1d(poly: np.ndarray, axis: int, bound: float, keep_greater: bool) -> np.ndarray:
-    """用半平面 poly[:, axis] >= bound (或 <= bound) 裁剪二维凸多边形 (Sutherland-Hodgman)。"""
+def _clip_polygon_nd(poly: np.ndarray, axis: int, bound: float, keep_greater: bool) -> np.ndarray:
+    """用半空间 poly[:, axis] >= bound (或 <= bound) 裁剪任意维度凸多边形 (Sutherland-Hodgman)。"""
     if len(poly) == 0:
         return poly
     out = []
@@ -345,7 +426,19 @@ def _clip_polygon_1d(poly: np.ndarray, axis: int, bound: float, keep_greater: bo
             out.append(prev + np.clip(t, 0.0, 1.0) * (cur - prev))
         if cur_in:
             out.append(cur)
-    return np.asarray(out, dtype=np.float64) if out else np.zeros((0, 2), dtype=np.float64)
+    return np.asarray(out, dtype=np.float64) if out else np.zeros((0, poly.shape[1]), dtype=np.float64)
+
+
+def _clip_obb_faces_to_slab(verts_local: np.ndarray, axis: int, lo: float, hi: float) -> list[np.ndarray]:
+    """将局部标架下的 OBB 6 个表面多边形裁剪到指定坐标轴区间 [lo, hi] 内。"""
+    clipped_faces: list[np.ndarray] = []
+    for quad in _OBB_FACE_QUADS:
+        poly = verts_local[list(quad)]
+        poly = _clip_polygon_nd(poly, axis=axis, bound=lo, keep_greater=True)
+        poly = _clip_polygon_nd(poly, axis=axis, bound=hi, keep_greater=False)
+        if len(poly) > 0:
+            clipped_faces.append(poly)
+    return clipped_faces
 
 
 # ------------------------------------------------------------------ 场景虚拟物体 (VirtualObject)
@@ -366,6 +459,7 @@ class VirtualObject:
         quality: str = "ok",
         held_by_arm: str | None = None,
         occluded: bool = False,
+        intrinsic_height_m: float | None = None,
     ):
         self.id = str(oid)
         self.centre_m = [float(v) for v in np.asarray(centre_m, dtype=float).reshape(3)]
@@ -373,6 +467,11 @@ class VirtualObject:
         self.bottom_z = float(bottom_z)
         self.length = max(float(length), 0.004)
         self.width = max(float(width), 0.004)
+        # 刚体固有高度固定保存，避免倾斜旋转更新世界 AABB top_z/bottom_z 时导致刚体尺寸累加膨胀
+        self.intrinsic_height_m = max(
+            float(intrinsic_height_m) if _num(intrinsic_height_m) else (self.top_z - self.bottom_z),
+            0.004,
+        )
         self.yaw_deg = float(yaw_deg)
         self.tilt_deg = float(tilt_deg) if _num(tilt_deg) else None
         self.support = support
@@ -382,6 +481,7 @@ class VirtualObject:
         self.virtual_moved = False
         # 被夹爪抓起后，物体中心与主轴相对于夹爪标架 (pad_center, axes) 的刚体相对变换
         self.rel_offset_in_gripper: np.ndarray | None = None
+        self._rel_centre_in_gripper: np.ndarray | None = None
         self.rel_axes_in_gripper: np.ndarray | None = None
         self._world_axes_override: np.ndarray | None = None
 
@@ -390,10 +490,14 @@ class VirtualObject:
         return max(self.top_z - self.bottom_z, 0.004)
 
     @property
+    def local_half_extents(self) -> np.ndarray:
+        return np.array([0.5 * self.length, 0.5 * self.width, 0.5 * self.intrinsic_height_m], dtype=np.float64)
+
+    @property
     def is_elongated(self) -> bool:
         if self.width <= 0 or self.width > MAX_OPENING_M or (self.length / self.width) < ELONGATED_RATIO:
             return False
-        if (self.top_z - self.bottom_z) >= 0.85 * self.length:
+        if self.intrinsic_height_m >= 0.85 * self.length:
             return False
         if _num(self.tilt_deg) and float(self.tilt_deg) < 35.0:
             return False
@@ -409,12 +513,11 @@ class VirtualObject:
         return np.column_stack([u_long, u_short, u_vert])
 
     def obb(self) -> OBB3D:
-        """返回物体当前在世界坐标系下的 3D OBB。"""
+        """返回物体当前在世界坐标系下的 3D OBB（始终使用刚体固有半轴长 local_half_extents）。"""
         axes = self.world_axes()
         z_mid = 0.5 * (self.top_z + self.bottom_z)
         center = np.array([self.centre_m[0], self.centre_m[1], z_mid], dtype=np.float64)
-        half_ext = np.array([0.5 * self.length, 0.5 * self.width, max(0.5 * (self.top_z - self.bottom_z), 0.002)], dtype=np.float64)
-        return OBB3D(center, axes, half_ext, label=self.id)
+        return OBB3D(center, axes, self.local_half_extents, label=self.id)
 
     def footprint_corners_xy(self) -> np.ndarray:
         """返回物体水平截面四个角点的世界坐标 (4, 3)。"""
@@ -438,13 +541,12 @@ class VirtualObject:
         pad_c = g_frame["pad_center_m"]
         g_axes = g_frame["axes"]
         obb_c = self.obb().center
-        # 记录物体几何中心及点位中心相对于夹爪标架的局部坐标
         self.rel_offset_in_gripper = (obb_c - pad_c) @ g_axes
         self._rel_centre_in_gripper = (np.asarray(self.centre_m, dtype=np.float64) - pad_c) @ g_axes
         self.rel_axes_in_gripper = g_axes.T @ self.world_axes()
 
     def update_from_gripper(self, g_frame: dict):
-        """当持物机械臂移动时，根据夹爪最新标架实时更新物体的 3D 位姿与包围盒。"""
+        """当持物机械臂移动时，根据夹爪最新标架实时更新物体的 3D 位姿与世界系 AABB 高度边界（严格幂等）。"""
         if self.rel_offset_in_gripper is None or self.rel_axes_in_gripper is None:
             return
         pad_c = g_frame["pad_center_m"]
@@ -453,28 +555,32 @@ class VirtualObject:
         self._world_axes_override = new_axes
         new_centre = pad_c + self._rel_centre_in_gripper @ g_axes.T
         new_obb_c = pad_c + self.rel_offset_in_gripper @ g_axes.T
-        half_ext = np.array([0.5 * self.length, 0.5 * self.width, 0.5 * self.height_m], dtype=np.float64)
-        z_extent = float(np.abs(new_axes[2, :]) @ half_ext)
+        z_extent = float(np.abs(new_axes[2, :]) @ self.local_half_extents)
         self.centre_m = [float(v) for v in new_centre]
         self.top_z = float(new_obb_c[2] + z_extent)
         self.bottom_z = float(new_obb_c[2] - z_extent)
-        # 更新水平投影主轴 yaw_deg
         u_long = new_axes[:, 0]
-        if math.hypot(u_long[0], u_long[1]) > 1e-4:
-            self.yaw_deg = float(wrap90(math.degrees(math.atan2(u_long[1], u_long[0]))))
+        if math.hypot(float(u_long[0]), float(u_long[1])) > 1e-4:
+            self.yaw_deg = float(wrap90(math.degrees(math.atan2(float(u_long[1]), float(u_long[0])))))
+        self.tilt_deg = float(math.degrees(math.acos(np.clip(abs(float(u_long[2])), 0.0, 1.0))))
         self.virtual_moved = True
 
     def detach_from_gripper(self, support_z: float, support_id: str = "table"):
-        """开爪释放物体时，解除刚体绑定并将物体沉降到下方支撑面上。"""
-        drop = max(0.0, self.bottom_z - float(support_z))
-        self.centre_m[2] = float(self.centre_m[2] - drop)
-        self.bottom_z = float(self.bottom_z - drop)
-        self.top_z = float(self.top_z - drop)
+        """开爪释放物体时，保留释放时的 3D 旋转姿态并将物体底部沉降到下方支撑面上。"""
+        axes = self.world_axes()
+        z_extent = float(np.abs(axes[2, :]) @ self.local_half_extents)
+        sup_z = float(support_z)
+        obb_z = sup_z + z_extent
+        old_obb_z = 0.5 * (self.top_z + self.bottom_z)
+        dz = obb_z - old_obb_z
+        self.centre_m[2] = float(self.centre_m[2] + dz)
+        self.bottom_z = sup_z
+        self.top_z = float(sup_z + 2.0 * z_extent)
         self.support = support_id
         self.held_by_arm = None
         self.rel_offset_in_gripper = None
+        self._rel_centre_in_gripper = None
         self.rel_axes_in_gripper = None
-        self._world_axes_override = None
         self.virtual_moved = True
 
     def to_dict(self) -> dict:
@@ -605,13 +711,24 @@ class VirtualSpatialField:
                         "position_m": [float(v) for v in grasp_pos],
                         "angles_deg": [float(p_deg), float(r_deg), float(y_deg)],
                     }
-            # 解析夹爪开度
+            # 解析夹爪开度（兼容 RoboDojo 实测 position_m: [left_m, right_m]、aperture_m、measured_aperture_m 及归一化字段）
             grip = arm_data.get("gripper") or arm_data.get("ee_joint_state") or {}
             if isinstance(grip, dict):
-                if _num(grip.get("aperture_m")):
+                pos_m = grip.get("position_m")
+                if isinstance(pos_m, (list, tuple, np.ndarray)) and len(pos_m) >= 2 and _num(pos_m[0]) and _num(pos_m[1]):
+                    self.arm_apertures_m[arm] = float(np.clip(float(pos_m[0]) + float(pos_m[1]), 0.0, MAX_OPENING_M))
+                elif _num(pos_m):
+                    self.arm_apertures_m[arm] = float(np.clip(float(pos_m), 0.0, MAX_OPENING_M))
+                elif _num(grip.get("measured_aperture_m")):
+                    self.arm_apertures_m[arm] = float(np.clip(grip["measured_aperture_m"], 0.0, MAX_OPENING_M))
+                elif _num(grip.get("aperture_m")):
                     self.arm_apertures_m[arm] = float(np.clip(grip["aperture_m"], 0.0, MAX_OPENING_M))
                 elif _num(grip.get("position_normalized")):
                     self.arm_apertures_m[arm] = float(np.clip(grip["position_normalized"], 0.0, 1.0)) * MAX_OPENING_M
+                elif _num(grip.get("command_normalized")):
+                    self.arm_apertures_m[arm] = float(np.clip(grip["command_normalized"], 0.0, 1.0)) * MAX_OPENING_M
+                elif _num(grip.get("goal_normalized")):
+                    self.arm_apertures_m[arm] = float(np.clip(grip["goal_normalized"], 0.0, 1.0)) * MAX_OPENING_M
             elif _num(arm_data.get("aperture_m")):
                 self.arm_apertures_m[arm] = float(np.clip(arm_data["aperture_m"], 0.0, MAX_OPENING_M))
 
@@ -653,12 +770,19 @@ class VirtualSpatialField:
         for idx, item in enumerate(raw_items):
             parsed = _parse_virtual_object(item, index=idx, table_z=self.table_z, columns=columns)
             if parsed is not None:
+                if parsed.held_by_arm in ("left", "right"):
+                    pose = self.arm_poses.get(parsed.held_by_arm)
+                    if pose is not None:
+                        parsed.attach_to_gripper(
+                            parsed.held_by_arm,
+                            gripper_frame(pose["position_m"], pose["angles_deg"]),
+                        )
                 new_objects[parsed.id] = parsed
 
         # 实时同步持物状态：若某臂上一轮持物且当前夹爪未张开释放 (aperture > 1.5mm 且 < 75mm)，用实测末端位姿更新持物 OBB
         for arm, held_obj in prev_held.items():
             ap = self.arm_apertures_m.get(arm, MAX_OPENING_M)
-            if 0.0015 < ap < 0.075:
+            if 0.0015 < ap < 0.075 and not any(o.held_by_arm == arm for o in new_objects.values()):
                 pose = self.arm_poses.get(arm)
                 if pose is not None:
                     g_frame = gripper_frame(pose["position_m"], pose["angles_deg"])
@@ -695,14 +819,18 @@ class VirtualSpatialField:
         return self
 
     def find_target_object(self, target_id: str | dict | VirtualObject | None, position_m=None) -> VirtualObject | None:
-        """根据 target_id 或空间坐标查找目标 VirtualObject。"""
+        """根据 target_id 或空间坐标查找目标 VirtualObject。
+
+        当显式指定非空字符串 target_id 时，仅按 ID 精确查找，若不存在则返回 None（绝不静默回退到坐标匹配其他物体）。
+        仅当 target_id 为 None 时，才按 position_m 匹配水平距离最近的可抓物体。
+        """
         if isinstance(target_id, VirtualObject):
             return target_id
         if isinstance(target_id, dict):
             return _parse_virtual_object(target_id, table_z=self.table_z)
-        if isinstance(target_id, str) and target_id in self.objects:
-            return self.objects[target_id]
-        if position_m is not None:
+        if isinstance(target_id, str):
+            return self.objects.get(target_id)
+        if target_id is None and position_m is not None:
             gx, gy = float(position_m[0]), float(position_m[1])
             best_obj, best_dist = None, math.inf
             for obj in self.objects.values():
@@ -723,71 +851,99 @@ class VirtualSpatialField:
         target: VirtualObject,
         open_aperture_m: float = MAX_OPENING_M,
         contact_region: str = "pad_center",
+        contact_depth_m: float | None = None,
     ) -> dict:
-        """内部高速抓取几何与体积干涉评估核心（不递归触发 solve_optimal_grasp）。"""
+        """内部三维抓取几何与实体体积干涉评估核心（基于夹爪三维正交标架下的真实 3D OBB 裁剪与有符号距离）。"""
         pos = np.asarray(position_m, dtype=np.float64).reshape(3)
         ang = np.asarray(angles_deg, dtype=np.float64).reshape(3)
         ap = float(np.clip(open_aperture_m, 0.0, MAX_OPENING_M))
 
-        g_parts = gripper_obbs(pos, ang, aperture_m=ap, contact_region=contact_region)
+        g_parts = gripper_obbs(
+            pos,
+            ang,
+            aperture_m=ap,
+            contact_region=contact_region,
+            contact_depth_m=contact_depth_m,
+        )
         g_frame = g_parts["frame"]
         pad_c = g_frame["pad_center_m"]
+        u_app = g_frame["approach_dir"]
         u_close = g_frame["closing_dir"]
         u_tan = g_frame["tangent_dir"]
         left_obb = g_parts["left_finger"]
         right_obb = g_parts["right_finger"]
         palm_obb = g_parts["palm"]
-        swept_obb = g_parts["swept_pad"]
 
         failure_reasons: list[str] = []
 
-        # 1. 计算目标物体在夹爪闭合-切向平面 (u_close, u_tan) 内的截面裁剪多边形
-        corners_3d = target.footprint_corners_xy()
-        rel_3d = corners_3d - pad_c[None, :]
-        poly_2d = np.column_stack([rel_3d @ u_close, rel_3d @ u_tan])
+        # 1. 在夹爪三维局部标架 (x_g=u_close, y_g=u_tan, z_g=-u_app) 下对目标 3D OBB 的 6 个面做精确平面束裁剪
+        target_obb = target.obb()
+        g_basis = np.column_stack([u_close, u_tan, -u_app])  # (3, 3)
+        verts_g = (target_obb.vertices() - pad_c[None, :]) @ g_basis  # (8, 3)
         half_fw = 0.5 * FINGER_WIDTH_M
-        clipped = _clip_polygon_1d(poly_2d, axis=1, bound=-half_fw, keep_greater=True)
-        clipped = _clip_polygon_1d(clipped, axis=1, bound=half_fw, keep_greater=False)
+        half_pd = 0.5 * PAD_DEPTH_M
 
+        faces_in_width = _clip_obb_faces_to_slab(verts_g, axis=1, lo=-half_fw, hi=half_fw)
         obj_axes = target.world_axes()
         delta_c = np.asarray(target.centre_m, dtype=np.float64) - pad_c
         axial_offset_m = float(abs(delta_c @ obj_axes[:, 0]))
 
-        if len(clipped) > 0:
-            c_min = float(np.min(clipped[:, 0]))
-            c_max = float(np.max(clipped[:, 0]))
+        if faces_in_width:
+            pts_w = np.vstack(faces_in_width)
+            z_g_min = float(np.min(pts_w[:, 2]))
+            z_g_max = float(np.max(pts_w[:, 2]))
+            vertical_bite_m = max(0.0, min(z_g_max, half_pd) - max(z_g_min, -half_pd))
+
+            faces_in_jaw: list[np.ndarray] = []
+            for face_poly in faces_in_width:
+                p_clip = _clip_polygon_nd(face_poly, axis=2, bound=-half_pd, keep_greater=True)
+                p_clip = _clip_polygon_nd(p_clip, axis=2, bound=half_pd, keep_greater=False)
+                if len(p_clip) > 0:
+                    faces_in_jaw.append(p_clip)
+            pts_slice = np.vstack(faces_in_jaw) if faces_in_jaw else pts_w
+            c_min = float(np.min(pts_slice[:, 0]))
+            c_max = float(np.max(pts_slice[:, 0]))
             projected_span_m = max(0.0, c_max - c_min)
-            slice_center = 0.5 * (c_min + c_max)
-            lateral_eccentricity_m = abs(slice_center)
+            lateral_eccentricity_m = abs(0.5 * (c_min + c_max))
             footprint_hit = True
         else:
-            c_min = float(np.min(poly_2d[:, 0]))
-            c_max = float(np.max(poly_2d[:, 0]))
+            vertical_bite_m = 0.0
+            c_min = float(np.min(verts_g[:, 0]))
+            c_max = float(np.max(verts_g[:, 0]))
             projected_span_m = max(0.0, c_max - c_min)
             lateral_eccentricity_m = abs(0.5 * (c_min + c_max))
             footprint_hit = False
             failure_reasons.append("grasp_misses_target_footprint")
 
-        # 2. 竖直咬合高度 (vertical_bite_m) 与指尖支撑台面净空 (support_clearance_m)
-        swept_min, swept_max = swept_obb.aabb()
-        pad_z_low, pad_z_high = float(swept_min[2]), float(swept_max[2])
-        vertical_bite_m = max(0.0, min(pad_z_high, target.top_z) - max(pad_z_low, target.bottom_z))
         if vertical_bite_m < MIN_VERTICAL_BITE_M:
             failure_reasons.append("insufficient_vertical_bite")
 
-        support_z = target.bottom_z if _num(target.bottom_z) else self.table_z
-        finger_min_z = min(float(left_obb.aabb()[0][2]), float(right_obb.aabb()[0][2]))
-        finger_max_z = max(float(left_obb.aabb()[1][2]), float(right_obb.aabb()[1][2]))
-        support_clearance_m = finger_min_z - float(support_z)
+        # 2. 指尖与手掌对支撑面/桌面的高度净空校验
+        support_z = max(float(target.bottom_z) if _num(target.bottom_z) else self.table_z, float(self.table_z))
+        gripper_min_z = min(
+            float(left_obb.aabb()[0][2]),
+            float(right_obb.aabb()[0][2]),
+            float(palm_obb.aabb()[0][2]),
+        )
+        support_clearance_m = gripper_min_z - support_z
         if support_clearance_m < -0.006:
             failure_reasons.append("fingertip_penetrates_support")
 
-        # 3. 张开手指下探时是否直接撞击目标物体本体 (finger_hits_target) 及闭合跨度/偏心校验
-        z_overlaps_target = (min(finger_max_z, target.top_z) - max(finger_min_z, target.bottom_z)) > 0.001
+        # 3. 用完整 3D OBB 有符号距离检测左指、右指、手掌是否与目标 3D OBB 本体发生实体穿模
+        d_left_target = obb_signed_distance(left_obb, target_obb)
+        d_right_target = obb_signed_distance(right_obb, target_obb)
+        d_palm_target = obb_signed_distance(palm_obb, target_obb)
+
         half_ap = 0.5 * ap
-        hits_left = footprint_hit and z_overlaps_target and (c_min < -half_ap + 0.0015) and (c_max > -half_ap - FINGER_THICKNESS_M - 0.0015)
-        hits_right = footprint_hit and z_overlaps_target and (c_max > half_ap - 0.0015) and (c_min < half_ap + FINGER_THICKNESS_M + 0.0015)
-        finger_hits_target = bool(hits_left or hits_right)
+        hits_left_slice = footprint_hit and (vertical_bite_m > 0.0) and (c_min < -half_ap + 0.0015) and (c_max > -half_ap - FINGER_THICKNESS_M - 0.0015)
+        hits_right_slice = footprint_hit and (vertical_bite_m > 0.0) and (c_max > half_ap - 0.0015) and (c_min < half_ap + FINGER_THICKNESS_M + 0.0015)
+        finger_hits_target = bool(
+            d_left_target < -0.002
+            or d_right_target < -0.002
+            or hits_left_slice
+            or hits_right_slice
+        )
+        palm_hits_target = bool(d_palm_target < -0.002)
 
         if projected_span_m > ap - 0.004:
             failure_reasons.append("projected_span_exceeds_opening")
@@ -796,9 +952,12 @@ class VirtualSpatialField:
             failure_reasons.append("excessive_lateral_eccentricity")
         if finger_hits_target:
             failure_reasons.append("finger_hits_target_on_descent")
+        if palm_hits_target:
+            failure_reasons.append("palm_collides_with_target")
 
-        # 4. 细长物体闭合方向夹角检验
-        closing_to_long_axis = axis_difference_deg(ang[2], target.yaw_deg)
+        # 4. 细长物体三维闭合方向与物体三维长轴夹角检验
+        cos_long = float(np.clip(abs(float(np.dot(u_close, obj_axes[:, 0]))), 0.0, 1.0))
+        closing_to_long_axis = float(math.degrees(math.acos(cos_long)))
         if target.is_elongated and closing_to_long_axis < 45.0:
             failure_reasons.append("closing_along_elongated_axis")
 
@@ -824,9 +983,12 @@ class VirtualSpatialField:
         return dict(
             arm=arm,
             target_id=target.id,
+            contact_region=contact_region,
+            contact_depth_m=_r(g_frame["contact_depth_m"], 4),
             theoretically_graspable=len(failure_reasons) == 0,
             failure_reasons=failure_reasons,
             finger_hits_target=finger_hits_target,
+            palm_hits_target=palm_hits_target,
             projected_span_m=_r(projected_span_m, 4),
             vertical_bite_m=_r(vertical_bite_m, 4),
             lateral_eccentricity_m=_r(lateral_eccentricity_m, 4),
@@ -846,6 +1008,7 @@ class VirtualSpatialField:
         target_id: str | dict | None = None,
         open_aperture_m: float = MAX_OPENING_M,
         contact_region: str = "pad_center",
+        contact_depth_m: float | None = None,
     ) -> dict:
         """评估指定三维抓取位姿的理论可夹持性、咬合体积与周围障碍物干涉。
 
@@ -856,6 +1019,7 @@ class VirtualSpatialField:
             target_id: 目标物体 ID (如 'o1') 或物体属性字典；省略时自动匹配水平距离最近的可抓物体。
             open_aperture_m: 下探前夹爪张开宽度，单位 m，默认 0.0888 (88.8mm)。
             contact_region: 接触截面 ('pad_center' | 'fingertip' | 'finger_middle')，默认 'pad_center'。
+            contact_depth_m: 可选自定义接触截面深度偏移，单位 m，范围 [-0.0075, 0.0625]；指定时覆盖 contact_region。
 
         返回:
             包含 theoretically_graspable (bool), failure_reasons (list[str]), projected_span_m (m),
@@ -869,9 +1033,12 @@ class VirtualSpatialField:
             return dict(
                 arm=arm,
                 target_id=target_id if isinstance(target_id, str) else None,
+                contact_region=contact_region,
+                contact_depth_m=_r(contact_depth_m, 4) if contact_depth_m is not None else 0.0,
                 theoretically_graspable=False,
                 failure_reasons=["no_target_object_in_reach"],
                 finger_hits_target=False,
+                palm_hits_target=False,
                 projected_span_m=None,
                 vertical_bite_m=0.0,
                 lateral_eccentricity_m=None,
@@ -889,12 +1056,15 @@ class VirtualSpatialField:
             target=target,
             open_aperture_m=open_aperture_m,
             contact_region=contact_region,
+            contact_depth_m=contact_depth_m,
         )
         opt = self.solve_optimal_grasp(
             target_id=target,
             arm=arm,
             preferred_yaw_deg=float(angles_deg[2]),
             open_aperture_m=open_aperture_m,
+            contact_region=contact_region,
+            contact_depth_m=contact_depth_m,
         )
         report["optimal_grasp_pose"] = opt
         return report
@@ -905,18 +1075,23 @@ class VirtualSpatialField:
         arm: str = "right",
         preferred_yaw_deg: float | None = None,
         open_aperture_m: float = MAX_OPENING_M,
+        contact_region: str = "pad_center",
+        contact_depth_m: float | None = None,
     ) -> dict:
-        """在虚拟场内围绕目标物体主轴与偏移网格搜索零碰撞、最大咬合、最小偏心的最优 3D 抓取位姿。
+        """在虚拟场内围绕目标物体主轴与偏移网格搜索无碰撞、最大咬合、最小偏心的候选 3D 抓取位姿。
 
         参数:
             target_id: 目标物体 ID (如 'o1') 或物体几何字典。
             arm: 规划使用的机械臂 ('left' | 'right')，默认 'right'。
             preferred_yaw_deg: 可选偏好偏航角 (deg)；未指定时优先选择最接近 0° 的无碰撞横跨主轴角。
             open_aperture_m: 下探前夹爪张开宽度，单位 m，默认 0.0888。
+            contact_region: 接触截面 ('pad_center' | 'fingertip' | 'finger_middle')，默认 'pad_center'。
+            contact_depth_m: 可选自定义接触截面深度偏移，单位 m。
 
         返回:
-            包含 position_m (m), angles_deg (deg), across_yaw_deg (deg), pre_grasp_position_m (m),
-            safe_lift_z_m (m), safe_transit_z_m (m), neighbor_clearance_m (m), vertical_bite_m (m) 的最优抓取字典。
+            包含 theoretically_graspable (bool), failure_reasons (list[str]), position_m (m), angles_deg (deg),
+            across_yaw_deg (deg), pre_grasp_position_m (m), safe_lift_z_m (m), safe_transit_z_m (m),
+            neighbor_clearance_m (m), vertical_bite_m (m) 的候选抓取字典。
         """
         target = self.find_target_object(target_id)
         if target is None:
@@ -977,6 +1152,8 @@ class VirtualSpatialField:
                             angles_deg=ang,
                             target=target,
                             open_aperture_m=open_aperture_m,
+                            contact_region=contact_region,
+                            contact_depth_m=contact_depth_m,
                         )
                         valid_bonus = 100.0 if ev["theoretically_graspable"] else -100.0 * len(ev["failure_reasons"])
                         clr = float(ev["neighbor_clearance_m"])
@@ -999,7 +1176,10 @@ class VirtualSpatialField:
         return dict(
             target_id=target.id,
             arm=arm,
+            contact_region=best_ev["contact_region"],
+            contact_depth_m=best_ev["contact_depth_m"],
             theoretically_graspable=best_ev["theoretically_graspable"],
+            failure_reasons=list(best_ev["failure_reasons"]),
             position_m=_r(best_pos, 4),
             angles_deg=_r(best_ang, 1),
             across_yaw_deg=round(float(best_ang[2]), 1),
@@ -1015,61 +1195,122 @@ class VirtualSpatialField:
 
     @staticmethod
     def _extract_stage_spec(stage: dict, default_poses: dict, default_apertures: dict) -> dict:
-        """兼容公开 robot_action stage 格式与内部 normalized action stage 格式。"""
+        """兼容公开 robot_action stage 格式（含 grasp_position_m+angles_deg、position_m+quaternion_xyzw、gripper_goal_normalized）与内部编译后 action 格式。"""
         stage_id = str(stage.get("id") or stage.get("stage_id") or "stage")
         arm = str(stage.get("arm") or "right")
         kind = str(stage.get("kind") or "move")
         own = stage.get("action") if isinstance(stage.get("action"), dict) else {}
 
+        gp = own.get("input_grasp_pose")
+        if isinstance(gp, dict) and arm in gp:
+            gp = gp[arm]
+        if not isinstance(gp, dict):
+            gp = {}
+
+        contact_region = str(
+            stage.get("contact_region")
+            or gp.get("contact_region")
+            or own.get("contact_region")
+            or "pad_center"
+        )
+        raw_depth = (
+            stage.get("contact_depth_m")
+            if _num(stage.get("contact_depth_m"))
+            else (
+                gp.get("contact_depth_m")
+                if _num(gp.get("contact_depth_m"))
+                else own.get("contact_depth_m")
+            )
+        )
+        contact_depth_m = float(raw_depth) if _num(raw_depth) else None
+
         cur_pose = default_poses.get(arm) or DEFAULT_ARM_POSES.get(arm, DEFAULT_ARM_POSES["right"])
         pos = None
         ang = None
 
-        # 1) 检查顶层 grasp_position_m / position_m / waypoints
+        # 1) 优先检查顶层 grasp_position_m + angles_deg，或法兰位姿 position_m + quaternion_xyzw
         if isinstance(stage.get("grasp_position_m"), (list, tuple)) and len(stage["grasp_position_m"]) == 3:
             pos = [float(v) for v in stage["grasp_position_m"]]
+            if isinstance(stage.get("angles_deg"), (list, tuple)) and len(stage["angles_deg"]) == 3:
+                ang = [float(v) for v in stage["angles_deg"]]
+        elif (
+            isinstance(stage.get("position_m"), (list, tuple))
+            and len(stage["position_m"]) == 3
+            and isinstance(stage.get("quaternion_xyzw"), (list, tuple))
+            and len(stage["quaternion_xyzw"]) == 4
+        ):
+            converted = flange_pose_to_grasp_pose(
+                stage["position_m"],
+                stage["quaternion_xyzw"],
+                contact_region=contact_region,
+                contact_depth_m=contact_depth_m,
+            )
+            pos = converted["grasp_position_m"]
+            ang = converted["angles_deg"]
         elif isinstance(stage.get("position_m"), (list, tuple)) and len(stage["position_m"]) == 3:
             pos = [float(v) for v in stage["position_m"]]
-        if isinstance(stage.get("angles_deg"), (list, tuple)) and len(stage["angles_deg"]) == 3:
-            ang = [float(v) for v in stage["angles_deg"]]
-        if pos is None and isinstance(stage.get("waypoints"), list) and stage["waypoints"]:
-            wp = stage["waypoints"][-1]
-            if isinstance(wp, dict):
-                wpos = wp.get("grasp_position_m") or wp.get("position_m")
-                if isinstance(wpos, (list, tuple)) and len(wpos) == 3:
-                    pos = [float(v) for v in wpos]
-                if isinstance(wp.get("angles_deg"), (list, tuple)) and len(wp["angles_deg"]) == 3:
-                    ang = [float(v) for v in wp["angles_deg"]]
+            if isinstance(stage.get("angles_deg"), (list, tuple)) and len(stage["angles_deg"]) == 3:
+                ang = [float(v) for v in stage["angles_deg"]]
 
         # 2) 检查内部 action.input_grasp_pose
-        if pos is None:
-            gp = own.get("input_grasp_pose")
-            if isinstance(gp, dict) and arm in gp:
-                gp = gp[arm]
-            if isinstance(gp, dict):
-                if isinstance(gp.get("position_m"), (list, tuple)) and len(gp["position_m"]) == 3:
-                    pos = [float(v) for v in gp["position_m"]]
-                if isinstance(gp.get("angles_deg"), (list, tuple)) and len(gp["angles_deg"]) == 3:
-                    ang = [float(v) for v in gp["angles_deg"]]
+        if pos is None and gp:
+            if isinstance(gp.get("position_m"), (list, tuple)) and len(gp["position_m"]) == 3:
+                pos = [float(v) for v in gp["position_m"]]
+            if isinstance(gp.get("angles_deg"), (list, tuple)) and len(gp["angles_deg"]) == 3:
+                ang = [float(v) for v in gp["angles_deg"]]
+
+        # 3) 检查顶层 waypoints 或内部 action.path.waypoints
+        waypoints = stage.get("waypoints")
+        if not (isinstance(waypoints, list) and waypoints):
+            path_dict = own.get("path") if isinstance(own.get("path"), dict) else {}
+            waypoints = path_dict.get("waypoints")
+        if pos is None and isinstance(waypoints, list) and waypoints:
+            wp = waypoints[-1]
+            if isinstance(wp, dict) and arm in wp and isinstance(wp[arm], dict):
+                wp = wp[arm]
+            if isinstance(wp, dict):
+                if isinstance(wp.get("grasp_position_m"), (list, tuple)) and len(wp["grasp_position_m"]) == 3:
+                    pos = [float(v) for v in wp["grasp_position_m"]]
+                    if isinstance(wp.get("angles_deg"), (list, tuple)) and len(wp["angles_deg"]) == 3:
+                        ang = [float(v) for v in wp["angles_deg"]]
+                elif (
+                    isinstance(wp.get("position_m"), (list, tuple))
+                    and len(wp["position_m"]) == 3
+                    and isinstance(wp.get("quaternion_xyzw"), (list, tuple))
+                    and len(wp["quaternion_xyzw"]) == 4
+                ):
+                    converted = flange_pose_to_grasp_pose(
+                        wp["position_m"],
+                        wp["quaternion_xyzw"],
+                        contact_region=contact_region,
+                        contact_depth_m=contact_depth_m,
+                    )
+                    pos = converted["grasp_position_m"]
+                    ang = converted["angles_deg"]
+                elif isinstance(wp.get("position_m"), (list, tuple)) and len(wp["position_m"]) == 3:
+                    pos = [float(v) for v in wp["position_m"]]
+                    if isinstance(wp.get("angles_deg"), (list, tuple)) and len(wp["angles_deg"]) == 3:
+                        ang = [float(v) for v in wp["angles_deg"]]
 
         if pos is None:
             pos = list(cur_pose["position_m"])
         if ang is None:
             ang = list(cur_pose["angles_deg"])
 
-        # 3) 提取夹爪开合指令 goal_normalized (0.0=闭合, 1.0=全开)
+        # 4) 提取夹爪开合指令 (优先识别正式 schema 的 gripper_goal_normalized 与 goal_normalized)
         goal_norm = None
-        if _num(stage.get("gripper")):
-            goal_norm = float(stage["gripper"])
+        if _num(stage.get("gripper_goal_normalized")):
+            goal_norm = float(stage["gripper_goal_normalized"])
         elif _num(stage.get("goal_normalized")):
             goal_norm = float(stage["goal_normalized"])
+        elif _num(stage.get("gripper")):
+            goal_norm = float(stage["gripper"])
         else:
             events = own.get("gripper_events") or stage.get("gripper_events") or []
             if isinstance(events, list) and events and isinstance(events[-1], dict):
                 if _num(events[-1].get("goal_normalized")):
                     goal_norm = float(events[-1]["goal_normalized"])
 
-        contact_region = str(stage.get("contact_region") or own.get("contact_region") or "pad_center")
         return dict(
             stage_id=stage_id,
             arm=arm,
@@ -1078,29 +1319,33 @@ class VirtualSpatialField:
             angles_deg=ang,
             goal_normalized=goal_norm,
             contact_region=contact_region,
+            contact_depth_m=contact_depth_m,
         )
 
     def simulate_stages(self, stages, step_m: float = 0.015) -> dict:
         """在虚拟场克隆副本上按顺序动态推演多阶段动作序列 [stage_1, stage_2, ...]。
 
-        支持闭爪抓起判定、持物随机械臂同步移动、搬运轨迹 3D OBB 碰撞检测与安全高度计算、以及开爪释放后物体位置更新。
+        支持闭爪抓起判定、持物随机械臂同步移动、搬运与原地旋转轨迹 3D OBB 碰撞检测（含桌面与场内物体）、以及开爪释放后物体位姿更新。
 
         参数:
             stages: 阶段列表 `[stage_1, ...]` 或包含 `'stages'` 的动作字典。
-            step_m: 路径线性插值采样步长，单位 m，默认 0.015 (1.5cm)。
+            step_m: 路径线性插值采样步长，单位 m (> 0)，默认 0.015 (1.5cm)。
 
         返回:
             包含 status ('clean' | 'risk_detected'), theoretically_valid (bool),
             min_path_clearance_m (m), stage_reports (list[dict]),
             virtual_world_after (list[dict]), suggested_fixes (list[dict]) 的推演报告。
         """
+        step = float(step_m)
+        if not math.isfinite(step) or step <= 0.0:
+            raise ValueError("step_m must be a positive finite number")
         raw_stages = stages.get("stages") if isinstance(stages, dict) else stages
         raw_stages = list(raw_stages or [])
         sim = self.clone()
 
         stage_reports: list[dict] = []
         suggested_fixes: list[dict] = []
-        overall_min_clearance = 1.0
+        overall_min_clearance = math.inf
         has_risk = False
 
         for idx, raw in enumerate(raw_stages):
@@ -1119,7 +1364,6 @@ class VirtualSpatialField:
             prev_ap = sim.arm_apertures_m.get(arm, MAX_OPENING_M)
             was_open = prev_ap >= 0.5 * MAX_OPENING_M
             goal_norm = spec["goal_normalized"]
-            # 判断本阶段或紧邻的纯 gripper 阶段是否在该位置闭爪抓取
             next_gripper_closing = False
             if goal_norm is None and kind == "move" and idx + 1 < len(raw_stages):
                 nxt = raw_stages[idx + 1]
@@ -1129,35 +1373,47 @@ class VirtualSpatialField:
                         next_gripper_closing = True
 
             is_closing_grasp = was_open and ((goal_norm is not None and goal_norm < 0.5) or next_gripper_closing)
-            is_releasing = (not was_open) and (goal_norm is not None and goal_norm >= 0.5)
-
             held_obj = next((o for o in sim.objects.values() if o.held_by_arm == arm), None)
             intended_target = sim.find_target_object(None, position_m=target_pos) if (is_closing_grasp and held_obj is None) else None
 
-            # 1. 若为移动阶段，沿轨迹插值检测夹爪 + 持物与场内其他物体的 3D OBB 净空与碰撞
-            stage_min_clearance = 1.0
+            # 1. 若为移动阶段，同时根据平移距离与三维旋转角度插值，检测夹爪 + 持物与桌面及场内物体的 3D OBB 碰撞
+            stage_min_clearance = math.inf
             colliding_ids: list[str] = []
             if kind == "move":
                 dist = float(np.linalg.norm(target_pos - start_pos))
-                n_steps = max(2, int(math.ceil(dist / max(float(step_m), 0.005))) + 1)
+                ang_deltas = np.array([wrap180(target_ang[k] - start_ang[k]) for k in range(3)], dtype=np.float64)
+                max_ang_deg = float(np.max(np.abs(ang_deltas)))
+                ang_step_deg = min(5.0, max(5.0 * (step / 0.015), 0.5))
+                n_steps = max(2, int(math.ceil(max(dist / step, max_ang_deg / ang_step_deg))) + 1)
                 for s_i in range(1, n_steps + 1):
                     alpha = float(s_i) / float(n_steps)
                     interp_pos = start_pos + alpha * (target_pos - start_pos)
-                    interp_ang = start_ang + alpha * np.array([wrap180(target_ang[k] - start_ang[k]) for k in range(3)])
-                    g_obbs = gripper_obbs(interp_pos, interp_ang, aperture_m=prev_ap, contact_region=spec["contact_region"])
+                    interp_ang = start_ang + alpha * ang_deltas
+                    g_obbs = gripper_obbs(
+                        interp_pos,
+                        interp_ang,
+                        aperture_m=prev_ap,
+                        contact_region=spec["contact_region"],
+                        contact_depth_m=spec["contact_depth_m"],
+                    )
                     moving_obbs = [g_obbs["left_finger"], g_obbs["right_finger"], g_obbs["palm"]]
                     if held_obj is not None:
                         held_obj.update_from_gripper(g_obbs["frame"])
                         moving_obbs.append(held_obj.obb())
 
+                    # 检查移动部件对支撑桌面的净空
+                    min_moving_z = min(float(m_obb.aabb()[0][2]) for m_obb in moving_obbs)
+                    table_clr = min_moving_z - float(sim.table_z)
+                    if table_clr < stage_min_clearance:
+                        stage_min_clearance = table_clr
+                    if table_clr < -0.006 and "table" not in colliding_ids:
+                        colliding_ids.append("table")
+
                     for other in sim.objects.values():
                         if other.held_by_arm == arm:
                             continue
-                        # 下探抓取目标阶段，目标物体本体由 evaluate_grasp 专项审计，不计入路径障碍物
-                        if intended_target is not None and other.id == intended_target.id:
-                            continue
-                        # 放置阶段在终点释放时允许接触目标支撑容器顶面
-                        if is_releasing and alpha > 0.85 and other.top_z <= (held_obj.bottom_z if held_obj else interp_pos[2]) + 0.008:
+                        if intended_target is not None and other.id == intended_target.id and s_i == n_steps:
+                            # 终点抓取时刻的目标物体接触由下方 evaluate_grasp 精确检查
                             continue
                         other_obb = other.obb()
                         d = min(obb_signed_distance(m_obb, other_obb) for m_obb in moving_obbs)
@@ -1171,12 +1427,18 @@ class VirtualSpatialField:
                     "angles_deg": [float(v) for v in target_ang],
                 }
                 if held_obj is not None:
-                    end_frame = gripper_frame(target_pos, target_ang, contact_region=spec["contact_region"])
+                    end_frame = gripper_frame(
+                        target_pos,
+                        target_ang,
+                        contact_region=spec["contact_region"],
+                        contact_depth_m=spec["contact_depth_m"],
+                    )
                     held_obj.update_from_gripper(end_frame)
 
             if stage_min_clearance < overall_min_clearance:
                 overall_min_clearance = stage_min_clearance
 
+            reported_stage_clr = _r(stage_min_clearance, 4) if math.isfinite(stage_min_clearance) else None
             stage_entry = dict(
                 stage_id=stage_id,
                 arm=arm,
@@ -1184,7 +1446,7 @@ class VirtualSpatialField:
                 target_position_m=_r(target_pos, 4),
                 target_angles_deg=_r(target_ang, 1),
                 held_object_id=held_obj.id if held_obj is not None else None,
-                path_clearance_m=_r(stage_min_clearance, 4),
+                path_clearance_m=reported_stage_clr,
                 colliding_objects=colliding_ids,
                 status="ok",
             )
@@ -1192,7 +1454,10 @@ class VirtualSpatialField:
             if colliding_ids:
                 has_risk = True
                 stage_entry["status"] = "path_collision"
-                max_col_top = max(sim.objects[cid].top_z for cid in colliding_ids if cid in sim.objects)
+                col_tops = [sim.objects[cid].top_z for cid in colliding_ids if cid in sim.objects]
+                if "table" in colliding_ids:
+                    col_tops.append(float(sim.table_z))
+                max_col_top = max(col_tops) if col_tops else float(sim.table_z)
                 bottom_offset = max(0.0075, float(target_pos[2]) - held_obj.bottom_z) if held_obj is not None else FINGERTIP_BELOW_PAD_M
                 rec_z = round(max_col_top + bottom_offset + 0.04, 4)
                 stage_entry["recommended_safe_z_m"] = rec_z
@@ -1214,11 +1479,17 @@ class VirtualSpatialField:
                     angles_deg=target_ang,
                     open_aperture_m=prev_ap,
                     contact_region=spec["contact_region"],
+                    contact_depth_m=spec["contact_depth_m"],
                 )
                 stage_entry["grasp_evaluation"] = grasp_eval
                 if grasp_eval["theoretically_graspable"] and grasp_eval["target_id"] in sim.objects:
                     grasped = sim.objects[grasp_eval["target_id"]]
-                    g_frame = gripper_frame(target_pos, target_ang, contact_region=spec["contact_region"])
+                    g_frame = gripper_frame(
+                        target_pos,
+                        target_ang,
+                        contact_region=spec["contact_region"],
+                        contact_depth_m=spec["contact_depth_m"],
+                    )
                     grasped.attach_to_gripper(arm, g_frame)
                     sim.arm_apertures_m[arm] = max(float(grasp_eval["projected_span_m"] or 0.01), 0.002)
                     stage_entry["grasped_object_id"] = grasped.id
@@ -1263,7 +1534,7 @@ class VirtualSpatialField:
         return dict(
             status="risk_detected" if has_risk else "clean",
             theoretically_valid=not has_risk,
-            min_path_clearance_m=_r(overall_min_clearance, 4),
+            min_path_clearance_m=_r(overall_min_clearance, 4) if math.isfinite(overall_min_clearance) else None,
             stage_reports=stage_reports,
             virtual_world_after=[obj.to_dict() for obj in sim.objects.values()],
             suggested_fixes=suggested_fixes,
@@ -1277,25 +1548,27 @@ class VirtualSpatialField:
         place_angles_deg=None,
         approach_clearance_m: float = 0.06,
     ) -> dict:
-        """在虚拟场内自动规划并验证完整的 6 阶段抓取-安全抬升-避障搬运-放置-撤离动作序列。
+        """在虚拟场内自动规划并验证符合 robot_action 契约的 6 阶段抓取-安全抬升-避障搬运-放置-撤离动作序列。
 
         参数:
             target_id: 待抓取的目标物体 ID (如 'o1') 或物体字典。
             place_position_m: 放置目标位置 [x, y, z]，单位 m (env_origin)。
             arm: 规划使用的机械臂 ('left' | 'right')，默认 'right'。
             place_angles_deg: 放置释放时的 3D 姿态角 [pitch_deg, roll_deg, yaw_deg]，单位 deg；省略时保持抓取姿态。
-            approach_clearance_m: 抓取与放置上方的安全悬停净空高度，单位 m，默认 0.06 (6cm)。
+            approach_clearance_m: 抓取与放置上方的安全悬停净空高度，单位 m (>= 0)，默认 0.06 (6cm)。
 
         返回:
-            包含 stages (可直接传入 robot_action 的 6 阶段列表), grasp_plan, transit_z_m (m), simulation (推演验证结果) 的字典。
+            包含 stages (严格符合 robot_action move stage 契约的 6 阶段列表), grasp_plan, transit_z_m (m), simulation (推演验证结果) 的字典。
         """
+        clearance = float(approach_clearance_m)
+        if not math.isfinite(clearance) or clearance < 0.0:
+            raise ValueError("approach_clearance_m must be a non-negative finite number")
         grasp_plan = self.solve_optimal_grasp(target_id=target_id, arm=arm)
         g_pos = grasp_plan["position_m"]
         g_ang = grasp_plan["angles_deg"]
         p_pos = [round(float(v), 4) for v in np.asarray(place_position_m, dtype=float).reshape(3)]
         p_ang = [round(float(v), 1) for v in np.asarray(place_angles_deg if place_angles_deg is not None else g_ang, dtype=float).reshape(3)]
 
-        clearance = max(float(approach_clearance_m), 0.03)
         transit_z = round(max(float(grasp_plan["safe_lift_z_m"]), g_pos[2] + clearance, p_pos[2] + clearance), 4)
         pre_grasp_z = round(max(float(grasp_plan["pre_grasp_position_m"][2]), transit_z), 4)
         retreat_z = round(max(p_pos[2] + clearance, transit_z), 4)
@@ -1307,7 +1580,7 @@ class VirtualSpatialField:
                 kind="move",
                 grasp_position_m=[g_pos[0], g_pos[1], pre_grasp_z],
                 angles_deg=list(g_ang),
-                gripper=1.0,
+                gripper_goal_normalized=1.0,
             ),
             dict(
                 id="grasp",
@@ -1315,7 +1588,7 @@ class VirtualSpatialField:
                 kind="move",
                 grasp_position_m=list(g_pos),
                 angles_deg=list(g_ang),
-                gripper=0.0,
+                gripper_goal_normalized=0.0,
                 grip_guard_preset="non_empty",
             ),
             dict(
@@ -1338,7 +1611,7 @@ class VirtualSpatialField:
                 kind="move",
                 grasp_position_m=list(p_pos),
                 angles_deg=list(p_ang),
-                gripper=1.0,
+                gripper_goal_normalized=1.0,
             ),
             dict(
                 id="retreat",
@@ -1393,6 +1666,7 @@ def evaluate_grasp(
     target_id: str | dict | None = None,
     open_aperture_m: float = MAX_OPENING_M,
     contact_region: str = "pad_center",
+    contact_depth_m: float | None = None,
     objects=None,
     field: VirtualSpatialField | None = None,
 ) -> dict:
@@ -1405,6 +1679,7 @@ def evaluate_grasp(
         target_id=target_id,
         open_aperture_m=open_aperture_m,
         contact_region=contact_region,
+        contact_depth_m=contact_depth_m,
     )
 
 
@@ -1413,16 +1688,20 @@ def solve_optimal_grasp(
     arm: str = "right",
     preferred_yaw_deg: float | None = None,
     open_aperture_m: float = MAX_OPENING_M,
+    contact_region: str = "pad_center",
+    contact_depth_m: float | None = None,
     objects=None,
     field: VirtualSpatialField | None = None,
 ) -> dict:
-    """在虚拟空间场中求解目标物体的零碰撞、最大咬合最优 3D 抓取位姿（详见 VirtualSpatialField.solve_optimal_grasp）。"""
+    """在虚拟空间场中求解目标物体的无碰撞、最大咬合候选 3D 抓取位姿（详见 VirtualSpatialField.solve_optimal_grasp）。"""
     vf = field if field is not None else virtual_field(objects=objects)
     return vf.solve_optimal_grasp(
         target_id=target_id,
         arm=arm,
         preferred_yaw_deg=preferred_yaw_deg,
         open_aperture_m=open_aperture_m,
+        contact_region=contact_region,
+        contact_depth_m=contact_depth_m,
     )
 
 

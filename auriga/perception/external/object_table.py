@@ -235,12 +235,13 @@ def grasp_hints_from(objects, support_z_m=None):
                 hint["stand_upright_angles_deg"] = up["release_angles_deg"]
         if oid in vf.objects:
             opt = vf.solve_optimal_grasp(oid)
-            hint["safe_grasp_pose"] = dict(
-                position_m=[_r(v, 3) for v in opt["position_m"]],
-                across_yaw_deg=opt["across_yaw_deg"],
-                neighbor_clearance_m=_r(opt["neighbor_clearance_m"], 3),
-                safe_transit_z_m=_r(opt["safe_transit_z_m"], 3),
-            )
+            if opt.get("theoretically_graspable") and (elongated or len(vf.objects) > 1):
+                hint["safe_grasp_pose"] = dict(
+                    position_m=[_r(v, 3) for v in opt["position_m"]],
+                    across_yaw_deg=opt["across_yaw_deg"],
+                    neighbor_clearance_m=_r(opt["neighbor_clearance_m"], 3),
+                    safe_transit_z_m=_r(opt["safe_transit_z_m"], 3),
+                )
         hints[oid] = hint
     return hints
 

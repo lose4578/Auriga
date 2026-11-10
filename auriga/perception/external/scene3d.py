@@ -353,6 +353,7 @@ def _execute_one_cloud_query(runtime, cloud, q, observation_id=None):
                 target_id=q.get("target_id") or q.get("object"),
                 open_aperture_m=float(q.get("open_aperture_m", 0.0888)),
                 contact_region=str(q.get("contact_region") or "pad_center"),
+                contact_depth_m=float(q["contact_depth_m"]) if q.get("contact_depth_m") is not None else None,
             ))
         if op == "solve_optimal_grasp":
             tid = q.get("target_id") or q.get("object")
@@ -363,6 +364,8 @@ def _execute_one_cloud_query(runtime, cloud, q, observation_id=None):
                 arm=str(q.get("arm") or "right"),
                 preferred_yaw_deg=q.get("preferred_yaw_deg"),
                 open_aperture_m=float(q.get("open_aperture_m", 0.0888)),
+                contact_region=str(q.get("contact_region") or "pad_center"),
+                contact_depth_m=float(q["contact_depth_m"]) if q.get("contact_depth_m") is not None else None,
             ))
         if op == "simulate_stages":
             stages = q.get("stages")

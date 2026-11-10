@@ -272,8 +272,9 @@ def _sync_virtual_field(runtime, bundle, table):
             runtime._virtual_spatial_field = vf
         else:
             vf.update_from_observation(table, robot_state=robot_state)
-    except Exception:
-        pass
+        runtime._virtual_field_last_error = None
+    except Exception as error:
+        runtime._virtual_field_last_error = f"{type(error).__name__}:{str(error)[:200]}"
 
 
 def attachments(runtime, bundle, correlation, *, reply="observe", before_observation_id=None):
