@@ -457,25 +457,10 @@ def _preview_downgrade_reasons(summary, args=None, harness=None):
         reasons.append('motion_safety_reject')
     grasp_review = summary.get('grasp_3d_review')
     if isinstance(grasp_review, dict):
-        has_infeasible_grasp = any(
-            isinstance(st, dict) and st.get('theoretically_graspable') is False
-            for st in (grasp_review.get('stages') or [])
-        )
-        vf_in_review = grasp_review.get('virtual_field_simulation')
-        vf_risk = isinstance(vf_in_review, dict) and (
-            vf_in_review.get('status') not in (None, 'clean')
-            or vf_in_review.get('theoretically_valid') is False
-        )
         if (grasp_review.get('status') not in (None, 'aligned')
                 or grasp_review.get('warnings')
-                or grasp_review.get('risk_flags')
-                or has_infeasible_grasp
-                or vf_risk):
+                or grasp_review.get('risk_flags')):
             reasons.append('grasp_3d_review_warnings')
-    vf_sim = summary.get('virtual_field_simulation')
-    if isinstance(vf_sim, dict) and (vf_sim.get('status') not in (None, 'clean') or vf_sim.get('theoretically_valid') is False):
-        if 'grasp_3d_review_warnings' not in reasons:
-            reasons.append('virtual_field_simulation_risk')
     geom_review = summary.get('geometry_review')
     if isinstance(geom_review, dict) and geom_review.get('risks'):
         reasons.append('geometry_review_risks')

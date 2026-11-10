@@ -279,20 +279,6 @@ def audit_batch_grasp_3d(harness, action, observation_id=None):
         bite_status = "ok"
         reasons = grasp_eval.get("failure_reasons") or []
         lat_ecc = grasp_eval.get("lateral_eccentricity_m") or 0.0
-        proj_span = grasp_eval.get("projected_span_m")
-        if "projected_span_exceeds_opening" in reasons and axis_status == "ok":
-            axis_status = "warn_span_exceeds_aperture"
-            stage_warnings.append(
-                f"Stage '{item['stage_id']}' projected target span={(proj_span or 0.0)*1000:.1f}mm along closing axis exceeds "
-                f"max gripper opening (88.8mm); adjust grasp orientation toward {opt_pose['angles_deg'] if opt_pose else [0.0, 0.0, rec_yaw]}."
-            )
-        if any(r in reasons for r in ("finger_hits_target_on_descent", "palm_collides_with_target", "table_collision")):
-            if finger_collision_status == "ok":
-                finger_collision_status = "warn_target_or_table_collision"
-            stage_warnings.append(
-                f"Stage '{item['stage_id']}' gripper collides with target/table before closing ({', '.join(reasons)}); "
-                f"candidate pose is {opt_pose['position_m'] if opt_pose else centre}."
-            )
         if height_status == "ok" and axis_status == "ok" and (
             "grasp_misses_target_footprint" in reasons or "excessive_lateral_eccentricity" in reasons
         ):
@@ -300,12 +286,6 @@ def audit_batch_grasp_3d(harness, action, observation_id=None):
             stage_warnings.append(
                 f"Stage '{item['stage_id']}' grasp lateral eccentricity={lat_ecc*1000:.1f}mm causes open finger to strike "
                 f"or miss {oid}; align grasp XY closer to {opt_pose['position_m'] if opt_pose else centre}."
-            )
-        elif not grasp_eval.get("theoretically_graspable", True) and height_status == "ok" and axis_status == "ok" and finger_collision_status == "ok":
-            bite_status = "warn_insufficient_bite"
-            stage_warnings.append(
-                f"Stage '{item['stage_id']}' 3D grasp check failed ({', '.join(reasons) or 'infeasible_grasp'}); "
-                f"candidate pose is {opt_pose['position_m'] if opt_pose else centre}."
             )
 
         stage_risk_flags = [
@@ -363,14 +343,11 @@ def audit_batch_grasp_3d(harness, action, observation_id=None):
                 f"Stage '{sr['stage_id']}' transport trajectory collides with 3D object(s) {', '.join(col_objs)} "
                 f"(clearance={sr['path_clearance_m']*1000:.1f}mm); raise transit z to at least {rec_z:.3f}m."
             )
-    has_infeasible_stage = any(not st.get("theoretically_graspable", True) for st in stage_audits)
-    if (has_infeasible_stage or sim_report.get("status") == "risk_detected") and not all_risk_flags:
-        all_risk_flags.append("warn_virtual_field_risk")
-    if not stage_audits and not warnings and not all_risk_flags:
+    if not stage_audits and not warnings:
         return None, []
     review = dict(
         observation_id=obs_id,
-        status="warnings_detected" if (warnings or all_risk_flags or has_infeasible_stage) else "aligned",
+        status="warnings_detected" if warnings else "aligned",
         risk_flags=all_risk_flags,
         stages=stage_audits,
         warnings=warnings,

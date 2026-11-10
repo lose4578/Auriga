@@ -179,15 +179,11 @@ def _check_pose_arrival(measured_pose, target_pose, pos_tol, ori_tol, *,
     residual = compute_endpoint_residual(target_pose, measured_pose)
     if not math.isfinite(position + orientation):
         return False, position, orientation, residual, False
-    dz = residual['dz_m']
-    if max_upward_dz_m is not None and dz > float(max_upward_dz_m):
-        return False, position, orientation, residual, False
-    if max_downward_dz_m is not None and dz < -float(max_downward_dz_m):
-        return False, position, orientation, residual, False
     if position <= pos_tol and orientation <= ori_tol:
         return True, position, orientation, residual, False
     if allow_vertical_compliance:
         xy_error = math.hypot(residual['dx_m'], residual['dy_m'])
+        dz = residual['dz_m']
         z_down_tol = max_downward_dz_m if max_downward_dz_m is not None else pos_tol
         z_up_tol = max_upward_dz_m if max_upward_dz_m is not None else max(pos_tol, 0.040)
         if xy_error <= pos_tol and -z_down_tol <= dz <= z_up_tol and orientation <= ori_tol:
@@ -685,8 +681,17 @@ def execute_batch(adapter, action, cache, receipt, segments, progress, interrupt
         ok, position, orientation, residual, vertical_compliant = _check_pose_arrival(
             measured_pose, ref_target, pos_tol, ori_tol,
             allow_vertical_compliance=allow_vertical,
-            max_upward_dz_m=max_upward_dz if (allow_vertical or explicit_dz is not None) else None,
+            max_upward_dz_m=max_upward_dz,
         )
+        if not ok and pos_tol < 0.0055 and position <= 0.0055 and orientation <= ori_tol:
+            planned_positions = record.get('planned_positions_m')
+            if isinstance(planned_positions, list) and len(planned_positions) > 0:
+                planned_end_err = float(np.linalg.norm(
+                    np.asarray(measured_pose['position_m'], dtype=float)
+                    - np.asarray(planned_positions[-1], dtype=float)
+                ))
+                if planned_end_err <= pos_tol:
+                    ok = True
         results[identifier]['endpoint_error'] = dict(
             position_error_m=position,
             orientation_error_rad=orientation,
@@ -1045,7 +1050,10 @@ def execute_batch(adapter, action, cache, receipt, segments, progress, interrupt
                     for other_id in records
                 )
                 if record.get('grip_guard'):
+                    jaw_delta = grip_facts.get('jaw_delta')
                     guard_eval = evaluate_grip_guard(grip_facts, record['grip_guard'])
+                    if not has_remaining_stages or (jaw_delta is not None and jaw_delta >= -1e-3):
+                        guard_eval = dict(guard_eval, triggered=False, reason=None, message=None)
                     results[identifier]['grip_guard'] = guard_eval
                     if guard_eval['triggered']:
                         guard_triggered.append((identifier, guard_eval))

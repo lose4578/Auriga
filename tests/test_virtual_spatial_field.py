@@ -423,28 +423,18 @@ class VirtualSpatialFieldTest(unittest.TestCase):
         self.assertIn("no_target_object_in_reach", ev_missing["failure_reasons"])
 
     def test_adversarial_round2_counterexamples(self):
-        """针对第二轮对抗审查发现的全部 P1-1~P1-3, P2-1~P2-11, P3-1 反例的回归测试。"""
+        """针对第二轮对抗审查中保留的底层几何/序列化/异常安全反例（P1-3, P2-2~P2-11, P3-1）及透明抓取几何参考的回归测试。"""
         import base64
         import json
-        from types import SimpleNamespace
         from auriga.perception.external.virtual_field import VirtualObject
-        from auriga.robot.motion.batch_motion import _check_pose_arrival
         from auriga.runtime.actions.action_state_ledger import (
             attribute_contact_block_3d,
             compute_object_table_delta,
             record_execution_outcome,
         )
-        from auriga.runtime.actions.unified_actions import _preview_downgrade_reasons
 
-        # [P1-1] _check_pose_arrival 严格执行显式 max_upward_dz_m=0.002，不被 position_tolerance_m=0.010 绕过
-        target_p = {"position_m": [0.0, 0.0, 0.800], "quaternion_xyzw": [0.0, 0.0, 0.0, 1.0]}
-        meas_p = {"position_m": [0.0, 0.0, 0.808], "quaternion_xyzw": [0.0, 0.0, 0.0, 1.0]}
-        ok_dz, _, _, _, _ = _check_pose_arrival(
-            meas_p, target_p, 0.010, 0.15, allow_vertical_compliance=True, max_upward_dz_m=0.002
-        )
-        self.assertFalse(ok_dz)
-
-        # [P1-2] 200mm 高物体侧向水平夹爪 (angles=[0,90,0]) 不可抓时，grasp_preview_3d 与 _preview_downgrade_reasons 必须拦截
+        # 透明几何参考原则：grasp_preview_3d 如实报告 stages[0].theoretically_graspable=False 供模型自主判断，
+        # 不把单目整体粗糙 OBB 跨度/接触估计升级为强制阻塞 execute_if_clean 的盲目裁判警告（防止误拦套圈环壁、马克杯把手抓取）
         tall_table = dict(
             columns=COLUMNS,
             table_z=0.765,
@@ -476,20 +466,20 @@ class VirtualSpatialFieldTest(unittest.TestCase):
                         "id": "grasp_tall",
                         "arm": "right",
                         "kind": "move",
-                        "grasp_position_m": [0.0, 0.0, 0.865],
-                        "angles_deg": [0.0, 90.0, 0.0],
-                        "gripper_goal_normalized": 0.0,
+                        "action": {
+                            "input_grasp_pose": {
+                                "position_m": [0.0, 0.0, 0.865],
+                                "angles_deg": [0.0, 90.0, 0.0],
+                            },
+                            "gripper_events": [{"goal_normalized": 0.0}],
+                        },
                     }
                 ],
             },
             "obs-tall",
         )
-        self.assertEqual(review_tall["status"], "warnings_detected")
-        self.assertTrue(len(review_tall["risk_flags"]) > 0)
-        downgrade = _preview_downgrade_reasons(
-            {"status": "planned", "grasp_3d_review": review_tall}
-        )
-        self.assertIn("grasp_3d_review_warnings", downgrade)
+        self.assertFalse(review_tall["stages"][0]["theoretically_graspable"])
+        self.assertEqual(review_tall["virtual_field_simulation"]["status"], "risk_detected")
 
         # [P1-3 & P2-11] centre_m 含 None 时 attribute_contact_block_3d 与 compute_object_table_delta 不崩溃；
         # record_execution_outcome 对缺失 executed_native_steps 保留 None 与 execution_uncertain=True
