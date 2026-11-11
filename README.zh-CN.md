@@ -10,11 +10,9 @@
 
 [![Project Page](https://img.shields.io/badge/Project%20Page-auriga.stelledge.com-0A66C2.svg)](https://auriga.stelledge.com/)
 [![Demo](https://img.shields.io/badge/Demo-Videos%20%26%20Rollouts-008080.svg)](https://auriga.stelledge.com/demos.html)
-[![Tech Report](https://img.shields.io/badge/Tech%20Report-PDF-B31B1B.svg)](docs/Auriga-Technical-Report.pdf)
+[![Paper](https://img.shields.io/badge/Paper-arXiv-B31B1B.svg)](https://arxiv.org/abs/2611.01112)
 [![Papers with Code: RoboDojo](https://paperswithcode.co/api/v1/papers/2611.01112/leaderboard-badge.svg?eval=47675&live=1)](https://paperswithcode.co/api/v1/papers/2611.01112/leaderboard-badge-link?eval=47675)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB.svg)](environment.yml)
-[![Node.js 22](https://img.shields.io/badge/Node.js-22-339933.svg)](web/package.json)
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [技术报告 (PDF)](docs/Auriga-Technical-Report.pdf) · [演示视频 (Demo)](https://auriga.stelledge.com/demos.html) · [文档索引](docs/README.md) · [开发约定](AGENTS.md) · [参与贡献](CONTRIBUTING.md) · [引用](#-引用)
 
