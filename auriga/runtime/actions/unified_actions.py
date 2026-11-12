@@ -318,71 +318,58 @@ def _execute(harness, args, correlation):
                 for stage in action['stages']]
     result = harness.execute(action, correlation)
     receipt = result['receipt']
-    result = dict(result, plan_id=identifier, action_id=action_id)
-    try:
-        from .action_state_ledger import attach_execution_ledger, record_execution_outcome
-        from .batch_repair import build_repair_hint
-        from .plan_continuation import build_next_action, summarize_stage_progress
-        if not replay:
-            record_execution_outcome(harness, identifier, action, receipt)
-            progress = summarize_stage_progress(record, receipt)
-            record['completed_stage_ids'] = progress['completed_stage_ids']
-            record['remaining_stage_ids'] = progress['remaining_stage_ids']
-            record['failed_stage_id'] = progress['failed_stage_id']
-            record['executable'] = receipt.get('batch_status') == 'awaiting_observation'
-            record['summary']['status'] = receipt.get('batch_status', receipt['status'])
-            record['summary']['last_action_id'] = action_id
-            record['summary']['completed_stage_ids'] = progress['completed_stage_ids']
-            record['summary']['remaining_stage_ids'] = progress['remaining_stage_ids']
-            record['summary']['failed_stage_id'] = progress['failed_stage_id']
-            if 'batch_cursor' in receipt:
-                record['summary']['executed_batch_native_steps'] = receipt['batch_cursor']
-            if 'batch_revision' in receipt:
-                record['summary']['plan_revision'] = receipt['batch_revision']
-            if receipt.get('batch_status') == 'awaiting_observation':
-                record['summary'].pop('repair_action', None)
-                record['summary']['checkpoint_observation_id'] = receipt.get('result_observation_id')
-                plans = getattr(harness.robot, '_batch_plans', None)
-                if isinstance(plans, dict) and record['native_plan_id'] in plans:
-                    plans[record['native_plan_id']]['expected_observation_id'] = receipt.get('result_observation_id')
+    from .action_state_ledger import attach_execution_ledger, record_execution_outcome
+    from .batch_repair import build_repair_hint
+    from .plan_continuation import build_next_action, summarize_stage_progress
+    if not replay:
+        record_execution_outcome(harness, identifier, action, receipt)
+        progress = summarize_stage_progress(record, receipt)
+        record['completed_stage_ids'] = progress['completed_stage_ids']
+        record['remaining_stage_ids'] = progress['remaining_stage_ids']
+        record['failed_stage_id'] = progress['failed_stage_id']
+        record['executable'] = receipt.get('batch_status') == 'awaiting_observation'
+        record['summary']['status'] = receipt.get('batch_status', receipt['status'])
+        record['summary']['last_action_id'] = action_id
+        record['summary']['completed_stage_ids'] = progress['completed_stage_ids']
+        record['summary']['remaining_stage_ids'] = progress['remaining_stage_ids']
+        record['summary']['failed_stage_id'] = progress['failed_stage_id']
+        if 'batch_cursor' in receipt:
+            record['summary']['executed_batch_native_steps'] = receipt['batch_cursor']
+        if 'batch_revision' in receipt:
+            record['summary']['plan_revision'] = receipt['batch_revision']
+        if receipt.get('batch_status') == 'awaiting_observation':
+            record['summary'].pop('repair_action', None)
+            record['summary']['checkpoint_observation_id'] = receipt.get('result_observation_id')
+            plans = getattr(harness.robot, '_batch_plans', None)
+            if isinstance(plans, dict) and record['native_plan_id'] in plans:
+                plans[record['native_plan_id']]['expected_observation_id'] = receipt.get('result_observation_id')
+        else:
+            hint = build_repair_hint(identifier, receipt)
+            if hint is not None:
+                record['summary']['repair_action'] = hint
             else:
-                hint = build_repair_hint(identifier, receipt)
-                if hint is not None:
-                    record['summary']['repair_action'] = hint
-                else:
-                    record['summary'].pop('repair_action', None)
-            record['summary']['next_action'] = build_next_action(identifier, record, receipt, result)
-        result = attach_execution_ledger(
-            harness,
-            dict(result, plan_id=identifier, action_id=action_id, next_action=deepcopy(record['summary'].get('next_action'))),
-            record['summary'],
-        )
-        if 'repair_action' in record['summary']:
-            result['repair_action'] = deepcopy(record['summary']['repair_action'])
-        if record.get('continuation_of') is not None:
-            result['continuation_of'] = deepcopy(record['continuation_of'])
-        hook = getattr(harness, 'unified_action_postprocess', None)
-        if hook is not None and not replay:
-            try:
-                updated = hook(result, correlation, settle=record.get('settle'))
-                if updated is not None:
-                    result = updated
-            except Exception as error:
-                result = dict(result, postprocess=dict(status='unavailable', reason=type(error).__name__,
-                    action_execution='preserved_in_receipt_do_not_replay'))
-            record['summary']['next_action'] = build_next_action(identifier, record, receipt, result)
-            result['next_action'] = deepcopy(record['summary']['next_action'])
-    except Exception as error:
-        result = dict(
-            result,
-            plan_id=identifier,
-            action_id=action_id,
-            postprocess=dict(
-                status='unavailable',
-                reason=type(error).__name__,
-                action_execution='preserved_in_receipt_do_not_replay',
-            ),
-        )
+                record['summary'].pop('repair_action', None)
+        record['summary']['next_action'] = build_next_action(identifier, record, receipt, result)
+    result = attach_execution_ledger(
+        harness,
+        dict(result, plan_id=identifier, action_id=action_id, next_action=deepcopy(record['summary']['next_action'])),
+        record['summary'],
+    )
+    if 'repair_action' in record['summary']:
+        result['repair_action'] = deepcopy(record['summary']['repair_action'])
+    if record.get('continuation_of') is not None:
+        result['continuation_of'] = deepcopy(record['continuation_of'])
+    hook = getattr(harness, 'unified_action_postprocess', None)
+    if hook is not None and not replay:
+        try:
+            updated = hook(result, correlation, settle=record.get('settle'))
+            if updated is not None:
+                result = updated
+        except Exception as error:
+            result = dict(result, postprocess=dict(status='unavailable', reason=type(error).__name__,
+                action_execution='preserved_in_receipt_do_not_replay'))
+        record['summary']['next_action'] = build_next_action(identifier, record, receipt, result)
+        result['next_action'] = deepcopy(record['summary']['next_action'])
     try:
         return _action_response(harness, result, action, record, correlation)
     except Exception:

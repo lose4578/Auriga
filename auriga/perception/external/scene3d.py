@@ -339,37 +339,12 @@ def _execute_one_cloud_query(runtime, cloud, q, observation_id=None):
     if op in ("evaluate_grasp", "solve_optimal_grasp", "simulate_stages", "plan_pick_and_place"):
         eff_obs_id = _resolve_observation_id(runtime, observation_id=observation_id, q=q)
         objs = q.get("objects") or q.get("object_table")
-        robot_state = q.get("robot_state")
-        if eff_obs_id:
-            if objs is None:
-                from .pose_skill import attached_table
-                objs = attached_table(runtime, eff_obs_id)
-            if not isinstance(robot_state, dict):
-                try:
-                    obs_bundle = runtime.scene.observation(runtime.identity, eff_obs_id)
-                    if isinstance(obs_bundle, dict):
-                        robot_state = obs_bundle.get("robot_state")
-                        if not isinstance(robot_state, dict) and obs_bundle.get("robot_state_ref"):
-                            _, raw_bytes = runtime.scene.resolve_artifact(obs_bundle["robot_state_ref"])
-                            robot_state = json.loads(raw_bytes)
-                except Exception:
-                    robot_state = None
-        session_vf = getattr(runtime, "_virtual_spatial_field", None)
-        vf = (
-            session_vf
-            if (
-                objs is None
-                and isinstance(session_vf, s3.VirtualSpatialField)
-                and (eff_obs_id is None or getattr(session_vf, "observation_id", None) == eff_obs_id)
-            )
-            else None
-        )
+        if objs is None and eff_obs_id:
+            from .pose_skill import attached_table
+            objs = attached_table(runtime, eff_obs_id)
+        vf = getattr(runtime, "_virtual_spatial_field", None) if objs is None else None
         if vf is None:
-            vf = s3.VirtualSpatialField(objects=objs, cloud=cloud, robot_state=robot_state)
-            if eff_obs_id:
-                vf.observation_id = eff_obs_id
-        elif isinstance(robot_state, dict):
-            vf._update_robot_state(robot_state)
+            vf = s3.VirtualSpatialField(objects=objs, cloud=cloud)
         if op == "evaluate_grasp":
             return dict(op=op, **vf.evaluate_grasp(
                 arm=str(q.get("arm") or "right"),
@@ -412,26 +387,13 @@ def _execute_one_cloud_query(runtime, cloud, q, observation_id=None):
     raise ValueError(f"unsupported_scene3d_op:{op}")
 
 
-def _json_safe_query_result(obj):
-    if isinstance(obj, np.ndarray):
-        if obj.ndim == 2:
-            return [[round(float(v), 4) for v in row] for row in obj]
-        return [round(float(v), 4) for v in obj.reshape(-1)]
-    if isinstance(obj, dict):
-        return {k: _json_safe_query_result(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [_json_safe_query_result(v) for v in obj]
-    return obj
-
-
 def execute_cloud_queries(runtime, data_bytes, raw_queries, observation_id=None):
     from . import scene3d_helpers as s3
     cloud = data_bytes if isinstance(data_bytes, s3.Cloud) else s3.from_bytes(data_bytes)
     results = []
     for item in raw_queries:
         try:
-            res = _execute_one_cloud_query(runtime, cloud, item, observation_id=observation_id)
-            results.append(_json_safe_query_result(res))
+            results.append(_execute_one_cloud_query(runtime, cloud, item, observation_id=observation_id))
         except Exception as error:
             results.append(dict(op=(item.get("op") if isinstance(item, dict) else None),
                                 status="error", error=str(error)[:200]))
@@ -495,25 +457,23 @@ def scene3d_query(runtime, request, *, timeout_s=None, slack_s=5.0):
                     timeout_s=limit)
         answer = query_service(features.vggt_endpoint, body, limit, slack_s)
         data = base64.b64decode(answer["npz_b64"])
-        from . import scene3d_helpers as s3
-        parsed_cloud = s3.from_bytes(data)
-        bbox, above = answer.get("bbox_m"), answer.get("bbox_above_support_m")
-        value = dict(source=SOURCE, measured=False, camera_id=camera_id, artifact=None, points=int(answer.get("n_points", 0)),
-                     points_above_table=int(answer.get("n_above_support", 0)), near_robot=int(answer.get("n_robot", 0)),
-                     voxel_m=round(float(answer.get("voxel_m", voxel)), 4),
-                     table_z=round(float(answer.get("support_z_m", features.vggt_support_z_m)), 4),
-                     bbox=[_r(bbox[0]), _r(bbox[1])] if bbox else None,
-                     bbox_above_table=[_r(above[0]), _r(above[1])] if above else None,
-                     usage=USAGE, api=list(API))
-        if raw_queries:
-            _, query_results = execute_cloud_queries(runtime, parsed_cloud, raw_queries, observation_id=obs_id)
-            value["query_results"] = query_results
-            if request.get("query") is not None and len(query_results) == 1:
-                value["query_result"] = query_results[0]
-    except (ServiceError, ValueError, KeyError, TypeError, OSError) as error:
+    except (ServiceError, ValueError, KeyError, TypeError) as error:
         result.update(status="unknown", reason="scene3d_unavailable:" + str(error)[:200])
         result["duration_s"] = time.monotonic() - started
         return result, None
+    bbox, above = answer.get("bbox_m"), answer.get("bbox_above_support_m")
+    value = dict(source=SOURCE, measured=False, camera_id=camera_id, artifact=None, points=int(answer.get("n_points", 0)),
+                 points_above_table=int(answer.get("n_above_support", 0)), near_robot=int(answer.get("n_robot", 0)),
+                 voxel_m=round(float(answer.get("voxel_m", voxel)), 4),
+                 table_z=round(float(answer.get("support_z_m", features.vggt_support_z_m)), 4),
+                 bbox=[_r(bbox[0]), _r(bbox[1])] if bbox else None,
+                 bbox_above_table=[_r(above[0]), _r(above[1])] if above else None,
+                 usage=USAGE, api=list(API))
+    if raw_queries:
+        _, query_results = execute_cloud_queries(runtime, data, raw_queries, observation_id=obs_id)
+        value["query_results"] = query_results
+        if request.get("query") is not None and len(query_results) == 1:
+            value["query_result"] = query_results[0]
     result.update(status="conditional", value=value, frame_ids=[camera["frame"]["frame_id"]],
                   assumptions=["VGGT-Omega monocular depth of one image, back-projected with the calibrated camera and "
                                "scaled so the fitted table plane lies at table_z; no per-object correction."])

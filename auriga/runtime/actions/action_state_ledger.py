@@ -73,9 +73,9 @@ def attribute_contact_block_3d(harness, action, receipt, fallback_pos=None):
     pos = None
     if isinstance(summary, dict):
         pos = summary.get("actual_contact_position_m") or summary.get("measured_position_m") or summary.get("target_position_m")
-    if not (isinstance(pos, list) and len(pos) == 3 and all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(float(v)) for v in pos)):
+    if not (isinstance(pos, list) and len(pos) == 3):
         pos = fallback_pos
-    if not (isinstance(pos, list) and len(pos) == 3 and all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(float(v)) for v in pos)):
+    if not (isinstance(pos, list) and len(pos) == 3):
         return None
     px, py, pz = float(pos[0]), float(pos[1]), float(pos[2])
     columns = list(table.get("columns") or [])
@@ -87,14 +87,10 @@ def attribute_contact_block_3d(harness, action, receipt, fallback_pos=None):
         if str(row.get("support") or "").startswith("held_") or row.get("quality") == "held_fk_depth":
             continue
         c = row.get("centre_m")
-        if not isinstance(c, list) or len(c) != 3 or not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(float(v)) for v in c):
+        if not isinstance(c, list) or len(c) != 3:
             continue
         dist = math.hypot(px - float(c[0]), py - float(c[1]))
-        reach = max(
-            0.5 * (float(row["length"]) if isinstance(row.get("length"), (int, float)) else 0.0) + 0.04,
-            0.5 * (float(row["width"]) if isinstance(row.get("width"), (int, float)) else 0.0) + 0.04,
-            0.075,
-        )
+        reach = max(0.5 * float(row.get("length") or 0.0) + 0.04, 0.5 * float(row.get("width") or 0.0) + 0.04, 0.075)
         if dist <= reach and dist < best_dist:
             best_row, best_dist = row, dist
     if best_row is None:
@@ -127,14 +123,6 @@ def _is_held_table_row(row):
     return str(row.get("support") or "").startswith("held_") or row.get("quality") == "held_fk_depth"
 
 
-def _valid_centre3(c):
-    return (
-        isinstance(c, (list, tuple))
-        and len(c) == 3
-        and all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(float(v)) for v in c)
-    )
-
-
 def compute_object_table_delta(before_table, after_table, *, move_threshold_m=0.015, match_radius_m=0.14):
     """对比动作前后两帧 3D object_table，识别发生明显位移/抬升、从原位消失或新出现的 3D 物体。"""
     if not isinstance(before_table, dict) or not isinstance(after_table, dict):
@@ -144,50 +132,43 @@ def compute_object_table_delta(before_table, after_table, *, move_threshold_m=0.
         row for r in (before_table.get("rows") or [])
         if isinstance(r, (list, tuple)) and len(r) >= len(b_cols)
         and not _is_held_table_row(row := dict(zip(b_cols, r)))
-        and _valid_centre3(row.get("centre_m"))
     ]
     a_rows = [
         row for r in (after_table.get("rows") or [])
         if isinstance(r, (list, tuple)) and len(r) >= len(a_cols)
         and not _is_held_table_row(row := dict(zip(a_cols, r)))
-        and _valid_centre3(row.get("centre_m"))
     ]
     if not b_rows and not a_rows:
         return None
-    # 按全局 3D 距离从小到大优先配对（静止/近距物体优先锁定，防止前序消失物体抢占静止邻近物体）
-    candidate_pairs = []
-    for b_idx, b in enumerate(b_rows):
-        bx, by, bz = (float(v) for v in b["centre_m"])
-        for a_idx, a in enumerate(a_rows):
-            ax, ay, az = (float(v) for v in a["centre_m"])
-            d3 = math.sqrt((bx - ax) ** 2 + (by - ay) ** 2 + (bz - az) ** 2)
-            if d3 <= match_radius_m:
-                same_id = 0 if str(b.get("id")) == str(a.get("id")) else 1
-                candidate_pairs.append((d3, same_id, b_idx, a_idx))
-    candidate_pairs.sort(key=lambda item: (round(item[0], 6), item[1], item[2], item[3]))
-    matched_b = {}
     used_after = set()
-    for d3, _, b_idx, a_idx in candidate_pairs:
-        if b_idx in matched_b or a_idx in used_after:
-            continue
-        matched_b[b_idx] = (a_idx, d3)
-        used_after.add(a_idx)
-
     moved, unchanged, vacated = [], [], []
-    for b_idx, b in enumerate(b_rows):
-        bx, by, bz = (float(v) for v in b["centre_m"])
-        if b_idx not in matched_b:
-            vacated.append(dict(before_id=b.get("id"), before_centre_m=[round(bx, 3), round(by, 3), round(bz, 3)]))
+    for b in b_rows:
+        bc = b.get("centre_m")
+        if not isinstance(bc, list) or len(bc) != 3:
             continue
-        a_idx, best_d = matched_b[b_idx]
-        a = a_rows[a_idx]
+        bx, by, bz = float(bc[0]), float(bc[1]), float(bc[2])
+        best_idx, best_d = None, math.inf
+        for idx, a in enumerate(a_rows):
+            if idx in used_after:
+                continue
+            ac = a.get("centre_m")
+            if not isinstance(ac, list) or len(ac) != 3:
+                continue
+            d3 = math.sqrt((bx - float(ac[0])) ** 2 + (by - float(ac[1])) ** 2 + (bz - float(ac[2])) ** 2)
+            if d3 <= match_radius_m and d3 < best_d:
+                best_idx, best_d = idx, d3
+        if best_idx is None:
+            vacated.append(dict(before_id=b["id"], before_centre_m=[round(bx, 3), round(by, 3), round(bz, 3)]))
+            continue
+        used_after.add(best_idx)
+        a = a_rows[best_idx]
         ax, ay, az = (float(v) for v in a["centre_m"])
         dx, dy, dz = round(ax - bx, 4), round(ay - by, 4), round(az - bz, 4)
         if best_d >= move_threshold_m or abs(dz) >= move_threshold_m:
             moved.append(
                 dict(
-                    before_id=b.get("id"),
-                    after_id=a.get("id"),
+                    before_id=b["id"],
+                    after_id=a["id"],
                     from_centre_m=[round(bx, 3), round(by, 3), round(bz, 3)],
                     to_centre_m=[round(ax, 3), round(ay, 3), round(az, 3)],
                     delta_m=[dx, dy, dz],
@@ -196,11 +177,11 @@ def compute_object_table_delta(before_table, after_table, *, move_threshold_m=0.
                 )
             )
         else:
-            unchanged.append(dict(before_id=b.get("id"), after_id=a.get("id")))
+            unchanged.append(dict(before_id=b["id"], after_id=a["id"]))
     appeared = [
-        dict(after_id=a.get("id"), centre_m=[round(float(v), 3) for v in a["centre_m"]])
+        dict(after_id=a["id"], centre_m=[round(float(v), 3) for v in a["centre_m"]])
         for idx, a in enumerate(a_rows)
-        if idx not in used_after
+        if idx not in used_after and isinstance(a.get("centre_m"), list) and len(a["centre_m"]) == 3
     ]
     return dict(moved=moved, vacated=vacated, appeared=appeared, unchanged_count=len(unchanged))
 
@@ -299,15 +280,12 @@ def record_execution_outcome(harness, plan_id, action, receipt):
                     fail_telemetry,
                 )
 
-    raw_steps = receipt.get("executed_native_steps")
     entry = dict(
         plan_id=plan_id,
         status=status,
         completed_stages=completed_ids[-4:],
-        executed_native_steps=int(raw_steps) if isinstance(raw_steps, (int, float)) and not isinstance(raw_steps, bool) else None,
+        executed_native_steps=receipt.get("executed_native_steps", 0),
     )
-    if receipt.get("execution_uncertain") is not None:
-        entry["execution_uncertain"] = bool(receipt["execution_uncertain"])
     if stop_reason:
         entry["stop_reason"] = stop_reason
     if failed_stage_id:
