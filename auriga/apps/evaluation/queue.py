@@ -17,8 +17,9 @@ import time
 import uuid
 
 from auriga.apps.library.scoring import load_effective_summary
+from auriga.cortex.agents.factory import agent_backend, backend_requirements, evidence_client
 from auriga.cortex.session.pidfd import pidfd_open, pidfd_send_signal
-from auriga.core.config import EXTERNAL_PERCEPTION_FIELDS, MOTION_THRESHOLD_FIELDS, Config, QueueConfig, cli_overrides
+from auriga.core.config import EXTERNAL_PERCEPTION_FIELDS, MOTION_THRESHOLD_FIELDS, AgentConfig, Config, QueueConfig, cli_overrides
 from auriga.core.presentation.actor_payload import ACTOR_PAYLOAD_PROFILES, DEFAULT_ACTOR_PAYLOAD_PROFILE
 from auriga.core.observation_policy import ACTOR_PROFILES, has_calibration
 from auriga.apps.library.experiments import atomic_json
@@ -415,9 +416,50 @@ def reserve_gpu(gpu, memory_mib=CASE_MEMORY_MIB, headroom_mib=GPU_HEADROOM_MIB, 
         if reservation is None: shared.close()
 
 
+def agent_settings(config, backend):
+    """Frozen agent selection for the queue record: backend and the upstream env-var NAME only, never a value."""
+    result = {"agent_backend": backend}
+    section = getattr(config.agent, backend, None)
+    if section is not None:
+        result["agent_upstream_api_key_env"] = section.upstream.api_key_env
+    return result
+
+
+def evidence_path_warnings(launch_configs):
+    """Queue warnings about the evidence helper path of one manifest (design 04 §9.6 fairness rule).
+
+    ``launch_configs``: the effective launch ``Config`` of every case, in case order. Cases that enable an evidence
+    feature (``features.visual_review_model`` or ``features.self_briefing``) must all use the same effective evidence
+    client (``"codex_agent"`` or ``"relay"``); otherwise one ``comparison_evidence_path_mismatch`` warning lists the
+    case indices per client and the backends involved. Returns a list (empty when consistent). Never refuses: a
+    deliberate Codex native-versus-relay comparison is its own single-variable experiment.
+    """
+    clients, backends = {}, set()
+    for index, config in enumerate(launch_configs):
+        if config.features.visual_review_model or config.features.self_briefing:
+            clients.setdefault(evidence_client(config), []).append(index)
+            backends.add(agent_backend(config))
+    if len(clients) < 2:
+        return []
+    return [{"kind": "comparison_evidence_path_mismatch", "evidence_clients": dict(sorted(clients.items())),
+             "agent_backends": sorted(backends),
+             "message": "cases enabling visual review or self-briefing use different evidence clients; set "
+                        "agent.evidence.client=\"relay\" on every arm of a harness comparison or declare the "
+                        "difference as a confound"}]
+
+
+def case_launch_config(case, gpu, config=None):
+    """Effective unified config of one benchmark ``case`` launched on ``gpu`` over ``config`` (default ``Config()``),
+    as the gateway will resolve it; the case must already have passed ``command``'s field validation."""
+    tags = case["tag"] if isinstance(case["tag"], list) else [case["tag"]]
+    launch_case = {**case, "tag": tags, "benchmark": True, "gpu": gpu, "category": "benchmark"}
+    launch_case.pop("experiment_condition", None)
+    return (config if config is not None else Config()).with_overrides(cli_overrides(launch_case))
+
+
 def command(case, gpu, *, config=None, config_path=None):
     required = {"cwd", "run_dir", "task", "seed", "layout_id", "title", "tag"}
-    if not isinstance(case, dict) or required - case.keys() or case.keys() - required - {"experiment_condition", "codex_home", "task_notes", "task_notes_source", "pi05", "visual_review_model", "actor_payload_profile", "image_feedback_policy", "enable_wait", "tracking_guard", "joint_replan", "arm_queue", "motion_cost_preview", "airborne_handoff", "handoff_preference", "action_trajectory_delivery", "bounded_continuation", "motion_safety_guard", "trajectory_preview", "manipulation_protocol", "task_scheduling", "operation_candidates", "preview_intent", "recovery_evidence", "motion_execution_mode", "default_motion_speed_scale", "completion_guidance", "observation_profile", "motion_review", "grasp_memory_dir", "disabled_tools", "record_video", "export_video", "terminal", "vision_compare", "robotic_view", "stereo_guide", "default_task_notes", "depth_skills", "depth_auto_feedback", "depth_event_payload", "external_perception", "vggt_height", "vggt_height_mode", "vggt_endpoint", "vggt_support_z_m", "vggt_timeout_s", "object_table", "object_table_max_objects", "object_table_max_height_m", "object_table_head_exclude_px", "scene3d", "scene3d_voxel_m", "scene3d_z_above_m", "scene3d_z_below_m", "object_table_observe", "scene3d_observe", "obs3d_timeout_s", "obs3d_max_objects", "obs3d_action_overlay", "pose_skill", "held_perception"}:
+    if not isinstance(case, dict) or required - case.keys() or case.keys() - required - {"experiment_condition", "agent_backend", "model", "effort", "codex_home", "task_notes", "task_notes_source", "pi05", "visual_review_model", "actor_payload_profile", "image_feedback_policy", "enable_wait", "tracking_guard", "joint_replan", "arm_queue", "motion_cost_preview", "airborne_handoff", "handoff_preference", "action_trajectory_delivery", "bounded_continuation", "motion_safety_guard", "trajectory_preview", "manipulation_protocol", "task_scheduling", "operation_candidates", "preview_intent", "recovery_evidence", "motion_execution_mode", "default_motion_speed_scale", "completion_guidance", "observation_profile", "motion_review", "grasp_memory_dir", "disabled_tools", "record_video", "export_video", "terminal", "vision_compare", "robotic_view", "stereo_guide", "default_task_notes", "depth_skills", "depth_auto_feedback", "depth_event_payload", "external_perception", "vggt_height", "vggt_height_mode", "vggt_endpoint", "vggt_support_z_m", "vggt_timeout_s", "object_table", "object_table_max_objects", "object_table_max_height_m", "object_table_head_exclude_px", "scene3d", "scene3d_voxel_m", "scene3d_z_above_m", "scene3d_z_below_m", "object_table_observe", "scene3d_observe", "obs3d_timeout_s", "obs3d_max_objects", "obs3d_action_overlay", "pose_skill", "held_perception"}:
         raise ValueError("Each case requires cwd, run_dir, task, seed, layout_id, title, tag; official native limits are automatic; unsupported run options are rejected")
     for name in ("cwd", "run_dir", "task", "title"):
         if not isinstance(case[name], str) or not case[name].strip(): raise ValueError("Invalid " + name)
@@ -427,6 +469,9 @@ def command(case, gpu, *, config=None, config_path=None):
     if "codex_home" in case and (not isinstance(case["codex_home"], str)
             or not Path(case["codex_home"]).is_absolute()):
         raise ValueError("Invalid codex_home: must be an absolute path")
+    for name in ("model", "effort", "agent_backend"):
+        if name in case and (type(case[name]) is not str or not case[name].strip()):
+            raise ValueError("Invalid " + name + ": must be a nonempty string")
     for name in ("cwd", "run_dir"):
         if not Path(case[name]).is_absolute(): raise ValueError(name + " must be absolute")
     layout = checkout_layout(case["cwd"])
@@ -466,12 +511,10 @@ def command(case, gpu, *, config=None, config_path=None):
     if "task_notes" in case or "task_notes_source" in case:
         if any(not isinstance(case.get(key), str) or not case[key].strip() for key in ("task_notes", "task_notes_source")) or len(case["task_notes"]) > 8000:
             raise ValueError("Public task_notes and task_notes_source must be provided together")
-    launch_case = {**case, "tag": tags, "benchmark": True, "gpu": gpu, "category": "benchmark"}
-    launch_case.pop("experiment_condition", None)
-    base_config.with_overrides(cli_overrides(launch_case)).validate_launch()
+    case_launch_config(case, gpu, base_config).validate_launch()
     args = [sys.executable, "-u", "-m", layout["module"], "--benchmark", "--observation-profile", profile,
             "--gpu", str(gpu), "--category", "benchmark"]
-    for key in ("run_dir", "task", "seed", "layout_id", "title", "codex_home", "task_notes", "task_notes_source", "actor_payload_profile", "completion_guidance", "motion_execution_mode", "default_motion_speed_scale", "image_feedback_policy", "handoff_preference", "action_trajectory_delivery", "vggt_height_mode", "vggt_endpoint", "vggt_support_z_m", "vggt_timeout_s", "object_table_max_objects", "object_table_max_height_m", "object_table_head_exclude_px", "scene3d_voxel_m", "scene3d_z_above_m", "scene3d_z_below_m", "obs3d_timeout_s", "obs3d_max_objects"):
+    for key in ("run_dir", "task", "seed", "layout_id", "title", "agent_backend", "model", "effort", "codex_home", "task_notes", "task_notes_source", "actor_payload_profile", "completion_guidance", "motion_execution_mode", "default_motion_speed_scale", "image_feedback_policy", "handoff_preference", "action_trajectory_delivery", "vggt_height_mode", "vggt_endpoint", "vggt_support_z_m", "vggt_timeout_s", "object_table_max_objects", "object_table_max_height_m", "object_table_head_exclude_px", "scene3d_voxel_m", "scene3d_z_above_m", "scene3d_z_below_m", "obs3d_timeout_s", "obs3d_max_objects"):
         if key in case: args.extend(["--" + key.replace("_", "-"), str(case[key])])
     if "visual_review_model" in case:
         args.extend(["--visual-review-model", case["visual_review_model"]] if case["visual_review_model"]
@@ -649,6 +692,8 @@ def run_queue(manifest, output, wait_timeout_s=None, *, recovery=None):
         manifest = {**manifest, "auriga_config": config.to_dict()}
         frozen_settings = {"configured": True, "source": "unified_config",
                            "codex_home": config.model.codex_home, "price_card": config.model.price_card}
+        if config.agent != AgentConfig():
+            frozen_settings.update(agent_settings(config, config.agent.backend))
     cases = manifest.get("cases")
     if not isinstance(cases, list) or not cases: raise ValueError("Manifest requires a nonempty cases list")
     cases = list(cases)  # Appended attempts must not rewrite the input manifest.
@@ -673,6 +718,9 @@ def run_queue(manifest, output, wait_timeout_s=None, *, recovery=None):
             schema = runtime_config_schema(cwd)
             if schema is not None:
                 compatibility.append((cwd, schema))
+                if "AgentConfig" not in schema and any("agent_backend" in case for case in cases if case["cwd"] == cwd):
+                    # A checkout without the agent section cannot honour --agent-backend; never run it as Codex.
+                    raise ValueError("unified_config_incompatible:agent")
         schemas = [schema for _, schema in compatibility]
         omissions = []
         effective_document = project_config_for_runtimes(effective_document, schemas, omissions)
@@ -680,6 +728,12 @@ def run_queue(manifest, output, wait_timeout_s=None, *, recovery=None):
             manifest = {**manifest, "config_compatibility": {
                 "status": "projected", "omitted_defaults": omissions,
                 "target_checkouts": [cwd for cwd, _ in compatibility]}}
+    # The selected agent backend must be able to run every case before any GPU is sampled or a gateway launched;
+    # a checkout schema without the agent section was refused above (unified_config_incompatible:agent).
+    launch_configs = [case_launch_config(case, 0, validation_config) for case in cases]
+    for launch_config in launch_configs:
+        backend_requirements(launch_config)
+    warnings = evidence_path_warnings(launch_configs)
     source_bindings = bind_sources(cases, manifest.get("source_bindings"))
     manifest = {**manifest, "source_bindings": source_bindings,
                 "source_binding_scope": (manifest.get("source_binding_scope", "legacy_recovery_current_sources_only")
@@ -751,6 +805,8 @@ def run_queue(manifest, output, wait_timeout_s=None, *, recovery=None):
     handlers = {sig: signal.signal(sig, lambda *_: stop.set()) for sig in (signal.SIGINT, signal.SIGTERM)}
     state = {"status": "running", "scheduling": scheduling, "cases": entries,
              "prior_attempts": recovery["prior_attempts"] if recovery else []}
+    if warnings:
+        state["warnings"] = warnings
     pending = list(range(len(cases)))
     ready_at = {index: time.monotonic() + max(0, entry.get("retry_not_before", 0) - time.time())
                 for index, entry in enumerate(entries)}
@@ -888,6 +944,8 @@ def run_queue(manifest, output, wait_timeout_s=None, *, recovery=None):
     window_budget, window_launched = INITIAL_LAUNCH_LIMIT, 0
     try:
         record("queue_started")
+        for warning in warnings:
+            record("queue_warning", warning=warning)
         while pending or active:
             completed_count = 0
             for running, (process, _) in list(active.items()):
@@ -955,6 +1013,8 @@ def run_queue(manifest, output, wait_timeout_s=None, *, recovery=None):
                             if "grasp_memory_dir" in case:
                                 environment["AURIGA_GRASP_MEMORY_DIR"] = case["grasp_memory_dir"]
                                 settings["grasp_memory_dir"] = case["grasp_memory_dir"]
+                            if "agent_backend" in case and config is not None:
+                                settings.update(agent_settings(config, case["agent_backend"]))
                             if "codex_home" in case:
                                 environment["CODEX_HOME"] = case["codex_home"]
                                 settings["codex_home"] = case["codex_home"]

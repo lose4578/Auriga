@@ -13,6 +13,7 @@ from codex_cli_bin import bundled_codex_path
 from auriga.cortex.session.codex import CodexSession, MODEL_PROXY_PROVIDER, ACTOR_ISOLATION, _model_provider, _upstream_auth
 from auriga.core.contracts import digest
 from auriga.core.storage.store import Store
+from support.host_capabilities import bubblewrap_namespaces, require
 
 
 class CodexProviderTest(unittest.TestCase):
@@ -92,6 +93,7 @@ class CodexProviderTest(unittest.TestCase):
             session.close()
             store.close()
 
+    @require(bubblewrap_namespaces, "starts the native Codex actor inside its bubblewrap namespace sandbox")
     def test_verified_sandbox_home_can_resume_with_native_generated_skills(self):
         (self.source / "config.toml").write_text('model_provider="fixture"\n[model_providers.fixture]\nbase_url="http://127.0.0.1:1/v1"\n')
         store = Store(self.root / "resume-run", dict(run_id="resume", episode_id="e", env_instance_id="i", env_generation=1))
@@ -109,6 +111,7 @@ class CodexProviderTest(unittest.TestCase):
             session.close()
             store.close()
 
+    @require(bubblewrap_namespaces, "starts the native Codex actor inside its bubblewrap namespace sandbox")
     def test_image_reuse_uses_frozen_settings_not_changed_environment(self):
         (self.source / "config.toml").write_text('model = "gpt-6-astra"\n')
         self.auth({"OPENAI_API_KEY": "synthetic"})
@@ -171,6 +174,7 @@ class CodexProviderTest(unittest.TestCase):
             session.close()
             store.close()
 
+    @require(bubblewrap_namespaces, "starts the native Codex actor inside its bubblewrap namespace sandbox")
     def test_generated_native_config_uses_private_id_but_preserves_source_identity(self):
         (self.source / "config.toml").write_text('model = "gpt-6-astra"\n')
         self.auth({"auth_mode": "chatgpt", "tokens": {"access_token": "synthetic"}})

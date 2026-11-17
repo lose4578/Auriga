@@ -1,0 +1,24 @@
+{
+  "_comment": "Synthetic fixture (no model, no robot): snapshot and events of a Claude Code run as the UI sees them. Transcript rows keep the Codex item vocabulary.",
+  "run": {
+    "run_id": "fixture-claude-code", "status": "running", "thread_id": "thread-cc", "turn_id": "turn-cc-1",
+    "agent_backend": "claude_code", "agent_status": "completed", "terminal": null, "accepting_actions": true
+  },
+  "legacy_codex_run": {
+    "run_id": "fixture-codex-old", "status": "running", "thread_id": "thread-cx", "turn_id": "turn-cx-1",
+    "codex_status": "running", "terminal": { "session_id": "pty", "exit_code": null }
+  },
+  "events": [
+    { "server_seq": 1, "event_id": "e1", "type": "agent.turn_started", "correlation": { "thread_id": "thread-cc", "turn_id": "turn-cc-1" } },
+    { "server_seq": 2, "event_id": "e2", "type": "action.completed", "correlation": { "item_id": "tool-1", "action_id": "act-1" } },
+    { "server_seq": 3, "event_id": "e3", "type": "agent.connection_lost", "correlation": { "thread_id": "thread-cc" } },
+    { "server_seq": 4, "event_id": "e4", "type": "agent.history_recovered", "payload": { "delta_history_complete": false } },
+    { "server_seq": 5, "event_id": "e5", "type": "agent.turn_completed", "correlation": { "thread_id": "thread-cc", "turn_id": "turn-cc-1" } }
+  ],
+  "items": [
+    { "id": "prompt", "type": "userMessage", "thread_id": "thread-cc", "turn_id": "turn-cc-1", "content": [{ "text": "Pick the cube" }] },
+    { "id": "plan", "type": "agentMessage", "thread_id": "thread-cc", "turn_id": "turn-cc-1", "text": "Moving to the cube" },
+    { "id": "tool-1", "type": "dynamicToolCall", "tool": "robot_move_ee", "thread_id": "thread-cc", "turn_id": "turn-cc-1" },
+    { "id": "tail", "type": "agentMessage", "thread_id": "thread-cc", "turn_id": "turn-cc-1", "text": "Done" }
+  ]
+}

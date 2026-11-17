@@ -15,7 +15,7 @@ import stat
 import tempfile
 from urllib.parse import urlsplit
 from copy import deepcopy
-from concurrent.futures import ThreadPoolExecutor, wait as wait_futures
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from importlib.metadata import version
 
@@ -25,20 +25,21 @@ from openai_codex.errors import JsonRpcError
 from jsonschema import validate as validate_json
 
 from ...core.contracts import canonical, digest, new_id, utc_now
-from .usage import account_usage
+from .usage import RelayUsageTotal, account_usage, add_served_model, responses_counters
 from .model_proxy import ModelRequestProxy, DEFAULT_MAX_RETRIES, RETRY_POLICY
 from .account_control import AccountControlRelay, ACCOUNT_BASE_URL
 from ...core.presentation.image_reuse import IMAGE_REUSE_POLICY
 from ...core.storage.images import store_image_settings
 from .pidfd import pidfd_open, pidfd_send_signal
 from .actor_source import snapshot_actor_source
-from ..context.task_planning import DECISION_BOUNDARY_INSTRUCTIONS
-from ...perception.depth.depth_runtime import DEPTH_KINDS
+from .agent_sandbox import ACTOR_ISOLATION  # shared by every sandboxed backend (design R4.4)
+from ..context.task_planning import decision_reminder_text
+from ..agents.dispatch import OrderedBarrier, is_parallel_call
+from ..agents.base import AgentCapabilities, AgentSession, model_effort_choices
 
 MODEL_COMPLETION_COUNTING = "delivered_usable_actor_helper_compact_responses_v2"
 MODEL_PROXY_PROVIDER = "auriga_model_proxy"
 DYNAMIC_TOOL_NAMESPACE = "auriga"
-ACTOR_ISOLATION = "bubblewrap_namespaces_package_egress_v1"
 CODEX_SDK_VERSION = version("openai-codex")
 CODEX_CLI_VERSION = version("openai-codex-cli-bin")
 _CODEX_PROTOCOL = json.loads(Path(__file__).with_name('codex_responses.json').read_text())
@@ -154,80 +155,27 @@ def normalize_token_usage(value):
             "model_context_window": counter(value.get("modelContextWindow"))}
 
 
-_PARALLEL_READ_TOOLS = frozenset({
-    "geometry_query", "depth_query", "robot_information", "robot_contact_overlay",
-    "robot_action_status", "robot_capabilities", "robot_status",
-    "history_list_actions", "history_view_observation", "history_read_trace",
-    "history_observations", "history_actions", "contact_overlay", "operation_review",
-    "program_status", "vision_compare", "scene_get", "scene_query",
-    "scene_events", "scene_snapshot", "scene_capabilities", "scene_job_status",
-    "pose_plan",
-})
-
-
 class RecordedClient(CodexClient):
     # The pinned SDK owns RPC routing. These hooks retain raw messages.
     def __init__(self, config, store, tool_handler, notification_handler, request_handler=None, disconnect_handler=None,
-                 *, route_notifications=True):
+                 *, route_notifications=True, parallel_safe=None):
         super().__init__(config, approval_handler=self._approval)
         self.store, self.tool_handler, self.notification_handler = store, tool_handler, notification_handler
         self.record_send_lock = threading.Lock()
         self.request_handler, self.disconnect_handler = request_handler, disconnect_handler
         self.route_notifications = route_notifications
         self.server_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="codex-tools")
-        self._tool_dispatch_lock = threading.Lock()
-        self._active_read_futures = []
-        self._last_ordered_future = None
-
-    @staticmethod
-    def _is_parallel_read_tool(message):
-        """判断工具调用是否为无状态副作用的纯读请求，以支持同回合安全并发。"""
-        params = message.get("params") if isinstance(message, dict) else None
-        if not isinstance(params, dict):
-            return False
-        tool = params.get("tool")
-        args = params.get("arguments")
-        if tool == "geometry_query":
-            req = args.get("request") if isinstance(args, dict) else None
-            commit = (isinstance(args, dict) and args.get("commit_scene")) or (
-                isinstance(req, dict) and req.get("commit_scene")
-            )
-            return not commit
-        if tool == "depth_query":
-            req = args.get("request") if isinstance(args, dict) else None
-            return isinstance(req, dict) and req.get("kind") not in DEPTH_KINDS
-        if tool == "robot_observe":
-            return isinstance(args, dict) and args.get("observation_id") is not None and args.get("crop") is not None
-        if tool == "task_plan":
-            return isinstance(args, dict) and args.get("operation") == "read"
-        if tool == "operation_memory":
-            req = args.get("request") if isinstance(args, dict) else None
-            return isinstance(req, dict) and req.get("kind") in {"help", "query"}
-        return tool in _PARALLEL_READ_TOOLS
-
-    def _run_after_deps(self, deps, message):
-        if deps:
-            wait_futures(deps)
-        return self._reply_request(message)
+        # (tool, arguments) -> bool from the registry contract (ToolRegistry.parallel_safe);
+        # None orders every tool call.
+        self.parallel_safe = parallel_safe
+        self._tool_barrier = OrderedBarrier()
 
     def _submit_request(self, message):
-        """非工具 RPC 立即并发执行；工具调用允许纯读请求并发，状态/动作工具按到达顺序栅栏串行。"""
+        """非工具 RPC 立即并发执行；工具调用按注册表契约允许并发安全调用并发，其余按到达顺序栅栏串行。"""
         if message.get("method") != "item/tool/call":
             return self.server_pool.submit(self._reply_request, message)
-        with self._tool_dispatch_lock:
-            self._active_read_futures = [f for f in self._active_read_futures if not f.done()]
-            ordered_dep = ([self._last_ordered_future]
-                           if self._last_ordered_future is not None and not self._last_ordered_future.done()
-                           else [])
-            if self._is_parallel_read_tool(message):
-                future = self.server_pool.submit(self._run_after_deps, ordered_dep, message)
-                self._active_read_futures.append(future)
-                return future
-            deps = [*self._active_read_futures, *ordered_dep]
-            self._active_read_futures = []
-            future = self.server_pool.submit(self._run_after_deps, deps, message)
-            self._last_ordered_future = future
-            return future
+        parallel = is_parallel_call(self.parallel_safe, message.get("params"))
+        return self._tool_barrier.schedule(self.server_pool, parallel, self._reply_request, message)
 
     def _reader_loop(self):
         # The pinned SDK calls tools on its RPC reader. Dispatching them separately
@@ -301,7 +249,20 @@ class RecordedClient(CodexClient):
         return {}
 
 
-class CodexSession:
+class CodexSession(AgentSession):
+    """Codex backend: pinned Python SDK over a stdio bridge to the run's private app-server (design §2.4)."""
+    backend_kind = "codex"
+    counting = MODEL_COMPLETION_COUNTING
+    capabilities = AgentCapabilities(steer=True, native_requests=True, terminal_attach=True,
+                                     native_terminal_replay=True, fork=True, deferred_tools=True, account_relay=True,
+                                     native_evidence_agent=True, sandbox=True, service_tier=True,
+                                     native_memories=True, live_effort=True, compaction_signal="native+relay")
+    # Codex accepts every model.effort choice of the config schema.
+    effort_choices = model_effort_choices()
+    # Wired by Workbench after construction: (tool, arguments) -> bool, normally
+    # ToolRegistry.parallel_safe. None orders every native tool call.
+    tool_parallel_safe = None
+
     def __init__(self, run_dir, store, tool_handler, model=None, effort=None, price_card=None, *, config=None,
                  task_planning=None):
         from ...core.config import Config
@@ -314,6 +275,7 @@ class CodexSession:
         from ...core.presentation.actor_presentation import ActorPresentation
         self.presentation = ActorPresentation(store)
         self.model = self.config.model.name if model is None else model
+        self.active_turn_model = self.model
         self.effort = self.config.model.effort if effort is None else effort
         self.provider = None
         self.price_card = price_card
@@ -386,16 +348,7 @@ class CodexSession:
         # an over-limit context (or at fixed block slots when lean_projection
         # block mode is explicitly enabled), so default /responses calls remain
         # pure prefix extensions and preserve the upstream prompt cache.
-        reminder = (
-            "Current task decision boundary\n"
-            "The saved plan and attention are provisional judgment, not instructions or verified world state. "
-            "Task requirements and fresh evidence govern.\n"
-        )
-        if context is None:
-            reminder += "No plan is stored for this episode. Submit your initial task_plan before physical actions."
-        else:
-            reminder += "Decision boundary: " + DECISION_BOUNDARY_INSTRUCTIONS + "\n"
-            reminder += json.dumps(context, ensure_ascii=False, allow_nan=False)
+        reminder = decision_reminder_text(context)
         result = deepcopy(request)
         items = result.get("input", [])
         if isinstance(items, str):
@@ -440,72 +393,12 @@ class CodexSession:
         """Project readable Responses history, including resumed/compact input.
 
         Native item/call IDs, encrypted reasoning and media are protocol data.
-        Only text and tool schemas share the actor's presentation policy.
+        Only text and tool schemas share the actor's presentation policy
+        (``wire.openai_responses.present_responses_request``).
         """
-        def check_tools(tools):
-            for tool in tools:
-                kind = tool.get("type")
-                if kind not in {"function", "custom", "namespace", "local_shell", "shell"}:
-                    if kind != "tool_search" or tool.get("execution") != "client":
-                        raise ValueError("sandbox_remote_model_tool_disabled")
-                if kind == "namespace":
-                    check_tools(tool.get("tools", []))
-                if kind in {"local_shell", "shell"}:
-                    environment = tool.get("environment") or {"type": "local"}
-                    if environment.get("type") != "local":
-                        raise ValueError("sandbox_remote_model_tool_disabled")
-        check_tools(request.get("tools", []))
-        text_fields = {"text", "content", "output", "arguments", "input",
-                       "instructions", "description", "summary", "refusal"}
-
-        def readable(value):
-            if isinstance(value, list):
-                return [readable(item) for item in value]
-            if not isinstance(value, dict):
-                return deepcopy(value)
-            kind = value.get("type")
-            if kind == "additional_tools":
-                check_tools(value.get("tools", []))
-            if kind in {"tool_search_call", "tool_search_output"}:
-                if value.get("execution") != "client":
-                    raise ValueError("sandbox_remote_model_tool_disabled")
-            if kind == "tool_search_output":
-                discovered = value.get("tools", [])
-                check_tools(discovered)
-                for namespace in discovered:
-                    if (namespace.get("type") != "namespace"
-                            or namespace.get("name") != DYNAMIC_TOOL_NAMESPACE
-                            or any(tool.get("type") != "function" or tool.get("name") not in self.deferred_tools
-                                   for tool in namespace.get("tools", []))):
-                        raise ValueError("native_discovered_tool_not_registered")
-            if value.get("type") in {"input_image", "inputImage", "image_url", "image"}:
-                url = value.get("image_url", value.get("imageUrl", value.get("url")))
-                if isinstance(url, dict):
-                    url = url.get("url")
-                if isinstance(url, str) and not url.startswith("data:"):
-                    raise ValueError("sandbox_remote_media_url_disabled")
-            if value.get("file_url") or value.get("fileUrl"):
-                raise ValueError("sandbox_remote_media_url_disabled")
-            result = {}
-            for key, item in value.items():
-                if key in {"parameters", "inputSchema", "schema"} and isinstance(item, dict):
-                    # A provenance-looking property is still a schema property.
-                    result[key] = self.presentation.present_data(item)
-                elif kind == "tool_search_call" and key == "arguments" and isinstance(item, (dict, list)):
-                    result[key] = self.presentation.present(item)
-                elif key in text_fields and isinstance(item, str):
-                    result[key] = self.presentation.present_text(item)
-                elif isinstance(item, (dict, list)):
-                    result[key] = readable(item)
-                else:
-                    result[key] = deepcopy(item)
-            return result
-
-        result = deepcopy(request)
-        for key in ("instructions", "input", "tools", "text"):
-            if key in result:
-                result[key] = (self.presentation.present_text(result[key])
-                               if isinstance(result[key], str) else readable(result[key]))
+        from .wire.openai_responses import present_responses_request
+        result = present_responses_request(request, self.presentation, deferred_tools=self.deferred_tools,
+                                           namespace=DYNAMIC_TOOL_NAMESPACE)
         if getattr(self, "lean_projection", False) and isinstance(result.get("input"), list):
             from ...core.presentation.lean_projection import project_request
             result = project_request(result, self.lean_projection_k, getattr(self, "lean_projection_block", 0))
@@ -538,9 +431,6 @@ class CodexSession:
                 original=strip(original), forwarded=strip(forwarded)), ensure_ascii=False))
         except Exception as error:
             self.store.event("codex.request_dump_failed", {"error_type": type(error).__name__})
-
-    def requests(self):
-        return self.store.states("native_request")
 
     def _request_id(self, message):
         return "native-" + digest([self.native_connection_id, message["id"]])[:24]
@@ -773,7 +663,27 @@ class CodexSession:
             enabled=self.image_settings["reuse_exact_images"], policy=IMAGE_REUSE_POLICY,
             compaction="unchanged", oversized_trim=self.image_settings["trim_oversized_requests"],
             max_inline_images=self.image_settings["trim_max_inline_images"]))
+        # Relay-measured usage and served model of every delivered completion (actor + helper + compaction), the
+        # same measurement every backend records (design 5.5, 4.6); a run resumed from before this record keeps
+        # its earlier calls as unknown rather than silently dropping them.
+        relay_seed = self.store.read_state("runtime", "model_usage_relay", None)
+        relay_usage, served_models = RelayUsageTotal(relay_seed), dict(previous.get("served_models") or {})
+        if used and not isinstance(relay_seed, dict):
+            relay_usage.total, relay_usage.calls = dict.fromkeys(relay_usage.total), used
+            relay_usage.unknown_calls = used
+        attempts, relay_lock = {}, threading.Lock()
         def request_event(event):
+            kind, call = event.get("kind"), event.get("logical_call_id")
+            with relay_lock:
+                if kind == "model_request_finished" and call is not None:
+                    attempts[call] = (responses_counters(event.get("usage")) if event.get("usage_known") else None,
+                                      event.get("served_model"))
+                elif kind in ("model_call_completed", "model_call_finished") and call is not None:
+                    counters, served = attempts.pop(call, (None, None))
+                    if kind == "model_call_completed":
+                        served_models.update(add_served_model(served_models, served))
+                        self.store.set_state("runtime", "model_usage_relay",
+                            relay_usage.add(counters, thread_id=self.thread_id))
             if event.get("endpoint") == "/responses/compact" and event.get("kind") == "model_call_started":
                 # Compaction can remove previously delivered RGB from actor context.
                 # Invalidate on attempt, even if it fails, to prefer extra evidence.
@@ -784,7 +694,8 @@ class CodexSession:
                          timeout_s=None, max_retries=DEFAULT_MAX_RETRIES, retry_policy=RETRY_POLICY,
                          transport_blocked=self.model_proxy.transport_blocked,
                          transport_error=self.model_proxy.blocked_error,
-                         transport_recovery=self.model_proxy.transport_recovery_summary, last_event=event)
+                         transport_recovery=self.model_proxy.transport_recovery_summary,
+                         served_models=dict(served_models), last_event=event)
             self.store.set_state("runtime", "model_requests", value)
             self.store.event("model." + event["kind"], event, source="private_model_transport")
         self.model_proxy = ModelRequestProxy(upstream_url,
@@ -948,7 +859,7 @@ class CodexSession:
                                   str(self.sandbox.host_socket_path if self.sandbox else self.socket_path)),
             client_name="auriga", client_title="Auriga", cwd=str(Path(__file__).resolve().parents[3])),
             self.store, tool, notification, request, disconnected,
-            route_notifications=False)
+            route_notifications=False, parallel_safe=self.tool_parallel_safe)
         self.client.start()
         initialized = self.client.initialize()
         if getattr(self, "lean_projection", False):
@@ -970,12 +881,21 @@ class CodexSession:
         if self.model_proxy is not None:
             self.model_proxy.register_thread(self.thread_id, "actor", self.thread_id)
         self.state = "idle"
-        self.store.set_state("runtime", "codex", dict(thread_id=self.thread_id, app_server_instance_id=new_id("appserver"),
+        instance_id = new_id("appserver")
+        self.store.set_state("runtime", "codex", dict(thread_id=self.thread_id, app_server_instance_id=instance_id,
                                                   app_server_pid=self.process.pid, socket_uri=f"unix://{self.socket_path}",
                                                   model=self.model, provider=self.provider, effort=self.effort, sdk_version=CODEX_SDK_VERSION,
                                                   cli_version=CODEX_CLI_VERSION, cli_executable=str(self.cli_executable),
                                                   initialization=initialized.model_dump(by_alias=True, mode="json"),
                                                   isolation=self.isolation, tools_digest=digest(tools)))
+        # Backend-neutral identity (design §5.2), mirroring runtime/codex; observer data only.
+        self.store.set_state("runtime", "agent", dict(
+            backend=self.backend_kind, thread_id=self.thread_id, instance_id=instance_id, pid=self.process.pid,
+            model=self.model, provider=self.provider, effort=self.effort, isolation=self.isolation,
+            tools_digest=digest(tools), instructions_digest=digest(parameters["developerInstructions"]),
+            counting=MODEL_COMPLETION_COUNTING, wire_api="openai_responses", sdk_version=CODEX_SDK_VERSION,
+            cli_version=CODEX_CLI_VERSION, cli_executable=str(self.cli_executable), cli_sha256=None,
+            native=dict(codex_home="private/codex-home", socket_uri=f"unix://{self.socket_path}")))
         if resume_thread_id:
             self.recover_history()
         return self.thread_id
@@ -1074,7 +994,7 @@ class CodexSession:
             usage = dict(normalize_token_usage(params.get("tokenUsage")), thread_id=params.get("threadId"),
                          turn_id=params.get("turnId"), raw_ref=ref)
             self.store.set_state("runtime", "token_usage", usage)
-            accounting = account_usage(usage, model=self.model, provider=self.provider, price_card=self.price_card)
+            accounting = account_usage(usage, model=self.active_turn_model or self.model, provider=self.provider, price_card=self.price_card)
             self.store.set_state("runtime", "token_accounting", accounting)
             if usage["turn_id"]:
                 self.store.set_state("token_usage", usage["turn_id"], usage)
@@ -1083,13 +1003,6 @@ class CodexSession:
             payload["token_accounting"] = accounting
         self.store.event("codex." + method, payload, correlation, source="codex_app_server")
 
-    def completed_final_answer(self):
-        """Read only this turn's completed final prose, excluding commentary/tools."""
-        if self.state != "completed" or not self.turn_done.is_set() or not self.thread_id or not self.turn_id:
-            return None
-        texts = self.store.completed_final_texts(self.thread_id, self.turn_id)
-        return "\n".join(texts) if texts else None
-
     def run_turn(self, prompt):
         with self.projection_lock:
             if self.state == "running":
@@ -1097,21 +1010,23 @@ class CodexSession:
             if self.state in ("disconnected", "unknown", "closed"):
                 raise ValueError("session_not_connected")
             prompt = self.presentation.present_text(prompt)
-            previous = self.state, self.turn_id, self.turn_result
+            previous = self.state, self.turn_id, self.turn_result, self.active_turn_model
             revision = self.turn_revision
+            turn_model, turn_effort = self.model, self.effort
+            self.active_turn_model = turn_model
             self.turn_done.clear()
             self.turn_id = None
             self.turn_result = None
             self.state = "running"
         try:
             result = self.client.turn_start(self.thread_id, [dict(type="text", text=prompt)],
-                                            dict(model=self.model, effort=self.effort))
+                                            dict(model=turn_model, effort=turn_effort))
         except JsonRpcError as error:
             with self.projection_lock:
                 # A later native event is stronger evidence than this rejection.
                 restored = self.state == "running" and self.turn_id is None and self.turn_revision == revision
                 if restored:
-                    self.state, self.turn_id, self.turn_result = previous
+                    self.state, self.turn_id, self.turn_result, self.active_turn_model = previous
                     self.turn_done.set()
                 self.store.event("codex.turn_start_rejected", dict(code=error.code, message=error.message,
                     state_restored=restored), {"thread_id": self.thread_id})
@@ -1126,6 +1041,72 @@ class CodexSession:
             if self.turn_id is None:
                 self.turn_id = result.turn.id
         return result.turn.id
+
+    def steer(self, text):
+        """Add operator text to the ACTIVE turn (native ``turn/steer``), like typing into Codex mid-turn.
+
+        Rejected unless a turn is running; it never starts a turn and never touches robot admission.
+        """
+        with self.projection_lock:
+            if self.state != "running" or not self.turn_id:
+                raise ValueError("no_active_turn_to_steer")
+            turn_id = self.turn_id
+        text = self.presentation.present_text(text)
+        result = self.client.turn_steer(self.thread_id, turn_id, [dict(type="text", text=text)])
+        self.store.event("codex.turn_steered", {"turn_id": turn_id, "chars": len(text)},
+                         {"thread_id": self.thread_id, "turn_id": turn_id})
+        return result.turn_id
+
+    def owned_processes(self):
+        """``[("codex_bridge", SDK stdio bridge), ("codex", app-server)]``, omitting processes not created yet."""
+        client = getattr(self, "client", None)
+        processes = (("codex_bridge", getattr(client, "_proc", None)), ("codex", getattr(self, "process", None)))
+        return [(role, process) for role, process in processes if process is not None]
+
+    def terminal_attach_spec(self):
+        """Read-only ``codex resume --remote`` TUI on the run's app-server socket, in the actor's sandbox prefix.
+
+        Pins the TUI to this session's current model and effort. None before ``_prepare`` resolved the native CLI.
+        """
+        executable = getattr(self, "cli_executable", None)
+        if executable is None:
+            return None
+        return dict(cwd=self.actor_dir,
+                    command_prefix=self.command_prefix + [str(executable),
+                        '-c', 'model=' + json.dumps(self.model),
+                        '-c', 'model_reasoning_effort=' + json.dumps(self.effort)],
+                    env=self.env, attach_uri=f"unix://{self.socket_path}", thread_id=self.thread_id)
+
+    def evidence_agent(self, **options):
+        """Codex's native evidence helper (``CodexEvidenceAgent``) bound to this session, or the backend-neutral
+        ``RelayEvidenceClient`` when ``agent.evidence.client == "relay"`` (design §9.6); ``options`` pass through."""
+        from ..agents.factory import EVIDENCE_CLIENT_RELAY, evidence_client
+        if evidence_client(getattr(self, "config", None), "codex") == EVIDENCE_CLIENT_RELAY:
+            from ..agents.evidence import RelayEvidenceClient
+            return RelayEvidenceClient(self, **options)
+        from .codex_evidence_agent import CodexEvidenceAgent
+        return CodexEvidenceAgent(self, **options)
+
+    def provenance(self):
+        """Manifest ``agent_backend`` block for Codex (design §7.3); values come from the pinned constants and
+        this session's resolved settings. Unknown values (not computed for Codex) are None."""
+        from ..agents.factory import evidence_client
+        executable = getattr(self, "cli_executable", None)
+        capabilities = getattr(self, "capabilities", None) or CodexSession.capabilities
+        return dict(kind="codex", sdk=CODEX_SDK_VERSION,
+                    cli=dict(version=CODEX_CLI_VERSION, executable=str(executable) if executable is not None else None,
+                             sha256=None),
+                    wire_api="openai_responses", upstream_provider=getattr(self, "provider", None),
+                    model_configured=getattr(self, "model", None), effort=getattr(self, "effort", None),
+                    native_effort=dict(model_reasoning_effort=getattr(self, "effort", None)),
+                    isolation=getattr(self, "isolation", None), counting=MODEL_COMPLETION_COUNTING,
+                    tool_transport=dict(kind="codex_dynamic_tools", tool_name_prefix="",
+                                        deferred_tools=("native_namespace" if getattr(self, "deferred_tools", None)
+                                                        else "none"),
+                                        deferred_namespace=DYNAMIC_TOOL_NAMESPACE),
+                    prompt_channel=dict(instructions_channel="developer_instructions", native_base_prompt="preserved"),
+                    evidence_client=evidence_client(getattr(self, "config", None), "codex"),
+                    capabilities=capabilities.to_dict())
 
     def interrupt(self):
         self.expire_requests("turn_interrupted")

@@ -1,0 +1,631 @@
+{
+ "capture": "spike S8 restart: SIGKILL of opencode serve during a 120 s MCP call in TURN-2, restart on the same data dir, TURN-3; anthropic_messages wire, opencode 1.19.5; GET /session/{id}/message shape, read from the run's opencode.db after the spike ended (rows hydrated like MessageV2.hydrate); every session was idle at capture (status_after)",
+ "sanitised": [
+  "run paths -> /runs/<scenario>",
+  "loopback ports -> 127.0.0.1:0",
+  "image data URLs -> 1-pixel placeholder",
+  "response date/server headers dropped",
+  "3 KiB filler tool outputs trimmed",
+  "bash `env` output replaced by a neutral line"
+ ],
+ "evidence": [
+  "scratch/s-c/evidence/s8-restart"
+ ],
+ "sessions": {
+  "after_crash": {
+   "session_id": "ses_e3909df63ffeUgEEDW7u2Oju14",
+   "status_after": {},
+   "messages": [
+    {
+     "info": {
+      "role": "user",
+      "time": {
+       "created": 1794339381418
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "relay",
+       "modelID": "claude-sonnet-4-5"
+      },
+      "system": "AURIGA-SYS",
+      "id": "msg_1c6f620aa001p2FMIbhEhwIwom",
+      "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14"
+     },
+     "parts": [
+      {
+       "type": "text",
+       "text": "TURN-1",
+       "id": "prt_1c6f620ad001VmXfX3FYJmrryM",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f620aa001p2FMIbhEhwIwom"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6f620aa001p2FMIbhEhwIwom",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s8-restart/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 15,
+       "input": 10,
+       "output": 5,
+       "reasoning": 0,
+       "cache": {
+        "write": 0,
+        "read": 0
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794339381678,
+       "completed": 1794339382307
+      },
+      "finish": "tool-calls",
+      "id": "msg_1c6f621ae001ZeRcPYAtjuMy5m",
+      "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6f6241a001ITjEqqjt1wmyAv",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f621ae001ZeRcPYAtjuMy5m"
+      },
+      {
+       "type": "tool",
+       "tool": "auriga_fast",
+       "callID": "call_fake_0_0",
+       "state": {
+        "status": "completed",
+        "input": {
+         "note": "before restart"
+        },
+        "output": "fast result: before restart",
+        "metadata": {
+         "truncated": false
+        },
+        "title": "",
+        "time": {
+         "start": 1794339382302,
+         "end": 1794339382304
+        }
+       },
+       "id": "prt_1c6f6241b001pmRwmrNBfz252m",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f621ae001ZeRcPYAtjuMy5m"
+      },
+      {
+       "reason": "tool-calls",
+       "type": "step-finish",
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6f624220018zQ6c8gKcRMKs3",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f621ae001ZeRcPYAtjuMy5m"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6f620aa001p2FMIbhEhwIwom",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s8-restart/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 15,
+       "input": 10,
+       "output": 5,
+       "reasoning": 0,
+       "cache": {
+        "write": 0,
+        "read": 0
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794339382308,
+       "completed": 1794339382324
+      },
+      "finish": "stop",
+      "id": "msg_1c6f62424001Obvs1X5V6oGpUD",
+      "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6f62430001EVma6d4EPB8SPP",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f62424001Obvs1X5V6oGpUD"
+      },
+      {
+       "type": "text",
+       "text": "FIRST-TURN-DONE",
+       "time": {
+        "start": 1794339382321,
+        "end": 1794339382322
+       },
+       "id": "prt_1c6f62431001bidrp7oP434Skg",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f62424001Obvs1X5V6oGpUD"
+      },
+      {
+       "reason": "stop",
+       "type": "step-finish",
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6f62433001RWDct1qGCl9SF7",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f62424001Obvs1X5V6oGpUD"
+      }
+     ]
+    },
+    {
+     "info": {
+      "role": "user",
+      "time": {
+       "created": 1794339383694
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "relay",
+       "modelID": "claude-sonnet-4-5"
+      },
+      "system": "AURIGA-SYS",
+      "id": "msg_1c6f6298e001obZVU5fysHI5rV",
+      "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14"
+     },
+     "parts": [
+      {
+       "type": "text",
+       "text": "TURN-2",
+       "id": "prt_1c6f6298f001fK9TorxcV98w84",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f6298e001obZVU5fysHI5rV"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6f6298e001obZVU5fysHI5rV",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s8-restart/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794339383941
+      },
+      "id": "msg_1c6f62a85001s024aOSqlSM1TB",
+      "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6f62afd0019FIxXpt0ZFtkr5",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f62a85001s024aOSqlSM1TB"
+      },
+      {
+       "type": "tool",
+       "tool": "auriga_slow",
+       "callID": "call_fake_2_0",
+       "state": {
+        "status": "running",
+        "input": {
+         "duration_s": 120
+        },
+        "time": {
+         "start": 1794339384065
+        }
+       },
+       "id": "prt_1c6f62afe001sv0YVT9REr2z6A",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f62a85001s024aOSqlSM1TB"
+      }
+     ]
+    }
+   ],
+   "note": "state after SIGKILL mid-MCP-call and restart, before TURN-3 (= result.json after_crash_messages; GET /session/status was {})"
+  },
+  "final": {
+   "session_id": "ses_e3909df63ffeUgEEDW7u2Oju14",
+   "status_after": {},
+   "messages": [
+    {
+     "info": {
+      "role": "user",
+      "time": {
+       "created": 1794339381418
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "relay",
+       "modelID": "claude-sonnet-4-5"
+      },
+      "system": "AURIGA-SYS",
+      "id": "msg_1c6f620aa001p2FMIbhEhwIwom",
+      "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14"
+     },
+     "parts": [
+      {
+       "type": "text",
+       "text": "TURN-1",
+       "id": "prt_1c6f620ad001VmXfX3FYJmrryM",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f620aa001p2FMIbhEhwIwom"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6f620aa001p2FMIbhEhwIwom",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s8-restart/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 15,
+       "input": 10,
+       "output": 5,
+       "reasoning": 0,
+       "cache": {
+        "write": 0,
+        "read": 0
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794339381678,
+       "completed": 1794339382307
+      },
+      "finish": "tool-calls",
+      "id": "msg_1c6f621ae001ZeRcPYAtjuMy5m",
+      "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6f6241a001ITjEqqjt1wmyAv",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f621ae001ZeRcPYAtjuMy5m"
+      },
+      {
+       "type": "tool",
+       "tool": "auriga_fast",
+       "callID": "call_fake_0_0",
+       "state": {
+        "status": "completed",
+        "input": {
+         "note": "before restart"
+        },
+        "output": "fast result: before restart",
+        "metadata": {
+         "truncated": false
+        },
+        "title": "",
+        "time": {
+         "start": 1794339382302,
+         "end": 1794339382304
+        }
+       },
+       "id": "prt_1c6f6241b001pmRwmrNBfz252m",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f621ae001ZeRcPYAtjuMy5m"
+      },
+      {
+       "reason": "tool-calls",
+       "type": "step-finish",
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6f624220018zQ6c8gKcRMKs3",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f621ae001ZeRcPYAtjuMy5m"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6f620aa001p2FMIbhEhwIwom",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s8-restart/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 15,
+       "input": 10,
+       "output": 5,
+       "reasoning": 0,
+       "cache": {
+        "write": 0,
+        "read": 0
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794339382308,
+       "completed": 1794339382324
+      },
+      "finish": "stop",
+      "id": "msg_1c6f62424001Obvs1X5V6oGpUD",
+      "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6f62430001EVma6d4EPB8SPP",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f62424001Obvs1X5V6oGpUD"
+      },
+      {
+       "type": "text",
+       "text": "FIRST-TURN-DONE",
+       "time": {
+        "start": 1794339382321,
+        "end": 1794339382322
+       },
+       "id": "prt_1c6f62431001bidrp7oP434Skg",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f62424001Obvs1X5V6oGpUD"
+      },
+      {
+       "reason": "stop",
+       "type": "step-finish",
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6f62433001RWDct1qGCl9SF7",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f62424001Obvs1X5V6oGpUD"
+      }
+     ]
+    },
+    {
+     "info": {
+      "role": "user",
+      "time": {
+       "created": 1794339383694
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "relay",
+       "modelID": "claude-sonnet-4-5"
+      },
+      "system": "AURIGA-SYS",
+      "id": "msg_1c6f6298e001obZVU5fysHI5rV",
+      "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14"
+     },
+     "parts": [
+      {
+       "type": "text",
+       "text": "TURN-2",
+       "id": "prt_1c6f6298f001fK9TorxcV98w84",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f6298e001obZVU5fysHI5rV"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6f6298e001obZVU5fysHI5rV",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s8-restart/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794339383941
+      },
+      "id": "msg_1c6f62a85001s024aOSqlSM1TB",
+      "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6f62afd0019FIxXpt0ZFtkr5",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f62a85001s024aOSqlSM1TB"
+      },
+      {
+       "type": "tool",
+       "tool": "auriga_slow",
+       "callID": "call_fake_2_0",
+       "state": {
+        "status": "running",
+        "input": {
+         "duration_s": 120
+        },
+        "time": {
+         "start": 1794339384065
+        }
+       },
+       "id": "prt_1c6f62afe001sv0YVT9REr2z6A",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f62a85001s024aOSqlSM1TB"
+      }
+     ]
+    },
+    {
+     "info": {
+      "role": "user",
+      "time": {
+       "created": 1794339389579
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "relay",
+       "modelID": "claude-sonnet-4-5"
+      },
+      "system": "AURIGA-SYS",
+      "id": "msg_1c6f6408b001Z0u1Zy35LSD641",
+      "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14"
+     },
+     "parts": [
+      {
+       "type": "text",
+       "text": "TURN-3-AFTER-CRASH",
+       "id": "prt_1c6f6408c001VbgWJJLGDzKLKn",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f6408b001Z0u1Zy35LSD641"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6f6408b001Z0u1Zy35LSD641",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s8-restart/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 15,
+       "input": 10,
+       "output": 5,
+       "reasoning": 0,
+       "cache": {
+        "write": 0,
+        "read": 0
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794339389829,
+       "completed": 1794339389946
+      },
+      "finish": "stop",
+      "id": "msg_1c6f64185001JWfq2cvxEq0Vne",
+      "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6f641f5001kA0pyEa6BC4b3c",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f64185001JWfq2cvxEq0Vne"
+      },
+      {
+       "type": "text",
+       "text": "AFTER-CRASH-REPLY",
+       "time": {
+        "start": 1794339389942,
+        "end": 1794339389943
+       },
+       "id": "prt_1c6f641f6001UYXo4nDqXFDpkD",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f64185001JWfq2cvxEq0Vne"
+      },
+      {
+       "reason": "stop",
+       "type": "step-finish",
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6f641f8001N0iZfEh4GSrzog",
+       "sessionID": "ses_e3909df63ffeUgEEDW7u2Oju14",
+       "messageID": "msg_1c6f64185001JWfq2cvxEq0Vne"
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

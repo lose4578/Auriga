@@ -9,6 +9,7 @@ from aiohttp import web, WSMsgType
 from openai_codex.errors import CodexError, JsonRpcError, ServerBusyError
 
 from ...core.contracts import canonical, digest, IDENTITY
+from ...cortex.agents.base import AgentRejected, AgentTransportUnknown
 from ...core.storage.store import file_digest
 from ..library.task_review import TaskReviewService
 from ...core.storage.read_models import artifact_response, record_updates
@@ -147,15 +148,15 @@ class WorkbenchRoutes:
                 self.store.set_state("control_response",identifier,{"request_id":identifier,"status":"unknown","reason":"dispatch_acknowledgement_missing_do_not_resend"})
                 try:
                     result=await self.execute_control(value,request.headers.get("Origin"))
-                except JsonRpcError as error:
+                except (JsonRpcError, AgentRejected) as error:
                     uncertain = self.session.state in ("running", "disconnected", "unknown")
                     if uncertain:
                         self.status = "unknown"
                     result = dict(request_id=identifier, status="unknown" if uncertain else "rejected",
-                        reason=error.message, native_rpc_code=error.code,
-                        http_status=409 if uncertain else 429 if isinstance(error, ServerBusyError) else 400)
+                        reason=getattr(error, "message", str(error)), native_rpc_code=getattr(error, "code", None),
+                        http_status=409 if uncertain else 429 if (isinstance(error, ServerBusyError) or getattr(error, "busy", False)) else 400)
                     self.store.event("control.status_unknown" if uncertain else "control.rejected", result)
-                except CodexError as error:
+                except (CodexError, AgentTransportUnknown) as error:
                     self.status = "unknown"
                     result = dict(request_id=identifier, status="unknown", reason=str(error), http_status=409)
                     self.store.event("control.status_unknown", result)

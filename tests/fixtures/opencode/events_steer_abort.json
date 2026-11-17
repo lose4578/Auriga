@@ -1,0 +1,1582 @@
+{
+ "capture": "spike S7 /event frames (data: lines, no SSE id), anthropic_messages wire, opencode 1.19.5; only message/session-status frames of the session are kept (session.updated/diff/plugin/catalog dropped)",
+ "sanitised": [
+  "run paths -> /runs/<scenario>",
+  "loopback ports -> 127.0.0.1:0",
+  "image data URLs -> 1-pixel placeholder",
+  "response date/server headers dropped",
+  "3 KiB filler tool outputs trimmed",
+  "bash `env` output replaced by a neutral line"
+ ],
+ "evidence": [
+  "scratch/s-c/evidence/s7-anthropic/events.json"
+ ],
+ "sessions": {
+  "C_steer_during_final": {
+   "session_id": "ses_e39132456ffeXQL18Zkmej0njs",
+   "events": [
+    {
+     "id": "evt_1c6ecdbad00191CyBoY2LHw9mm",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "info": {
+       "id": "msg_1c6ecdbac001rBEmJJd2OFt6vG",
+       "role": "user",
+       "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+       "time": {
+        "created": 1794338773932
+       },
+       "agent": "build",
+       "model": {
+        "providerID": "relay",
+        "modelID": "claude-sonnet-4-5"
+       }
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecdbad002V4mcZ3lF2xd5AF",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "part": {
+       "type": "text",
+       "text": "USER-ONE",
+       "messageID": "msg_1c6ecdbac001rBEmJJd2OFt6vG",
+       "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+       "id": "prt_1c6ecdbad0016Vt83e7o2Dib0s"
+      },
+      "time": 1794338773933
+     }
+    },
+    {
+     "id": "evt_1c6ecdbaf001L7j9NkLy6vXvvX",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecdbb0001xo4iWfmkRDGwaf",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "info": {
+       "id": "msg_1c6ecdbaf001pPQk0ErujaCnUZ",
+       "parentID": "msg_1c6ecdbac001rBEmJJd2OFt6vG",
+       "role": "assistant",
+       "mode": "build",
+       "agent": "build",
+       "path": {
+        "cwd": "/runs/s7-anthropic/actor",
+        "root": "/"
+       },
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "modelID": "claude-sonnet-4-5",
+       "providerID": "relay",
+       "time": {
+        "created": 1794338773935
+       },
+       "sessionID": "ses_e39132456ffeXQL18Zkmej0njs"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecdbb2001tWxJ1BXaSJFLQS",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecdbb70019wOMX9dYfJT0Y0",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "info": {
+       "id": "msg_1c6ecdbb7001VDWaIlsQ78SMdh",
+       "role": "user",
+       "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+       "time": {
+        "created": 1794338773943
+       },
+       "agent": "build",
+       "model": {
+        "providerID": "relay",
+        "modelID": "claude-sonnet-4-5"
+       }
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecdbb8001PGULrOOw7Z674e",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "part": {
+       "type": "text",
+       "text": "STEER-DURING-FINAL",
+       "messageID": "msg_1c6ecdbb7001VDWaIlsQ78SMdh",
+       "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+       "id": "prt_1c6ecdbb7002AP1qWJ7UgpOSJf"
+      },
+      "time": 1794338773944
+     }
+    },
+    {
+     "id": "evt_1c6ecdfa8001rjdlyXxt30xoZT",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "part": {
+       "id": "prt_1c6ecdfa80019p9A13rWDk9CTm",
+       "messageID": "msg_1c6ecdbaf001pPQk0ErujaCnUZ",
+       "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+       "type": "step-start"
+      },
+      "time": 1794338774952
+     }
+    },
+    {
+     "id": "evt_1c6ecdfa9001PINRGN66xb2OGa",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "part": {
+       "id": "prt_1c6ecdfa90019NQ1mlR94g1khS",
+       "messageID": "msg_1c6ecdbaf001pPQk0ErujaCnUZ",
+       "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+       "type": "text",
+       "text": "",
+       "time": {
+        "start": 1794338774953
+       }
+      },
+      "time": 1794338774953
+     }
+    },
+    {
+     "id": "evt_1c6ecdfa9002G0KPA3T1B35rKR",
+     "type": "message.part.delta",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "messageID": "msg_1c6ecdbaf001pPQk0ErujaCnUZ",
+      "partID": "prt_1c6ecdfa90019NQ1mlR94g1khS",
+      "field": "text",
+      "delta": "FIRST-FINAL"
+     }
+    },
+    {
+     "id": "evt_1c6ecdfa90038ioCMeaJolmkFq",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "part": {
+       "id": "prt_1c6ecdfa90019NQ1mlR94g1khS",
+       "messageID": "msg_1c6ecdbaf001pPQk0ErujaCnUZ",
+       "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+       "type": "text",
+       "text": "FIRST-FINAL",
+       "time": {
+        "start": 1794338774953,
+        "end": 1794338774953
+       }
+      },
+      "time": 1794338774953
+     }
+    },
+    {
+     "id": "evt_1c6ecdfaa001hL3Jb3MpKrB697",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "part": {
+       "id": "prt_1c6ecdfaa001zecGSim65SGSs1",
+       "reason": "stop",
+       "messageID": "msg_1c6ecdbaf001pPQk0ErujaCnUZ",
+       "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+       "type": "step-finish",
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "cost": 0
+      },
+      "time": 1794338774954
+     }
+    },
+    {
+     "id": "evt_1c6ecdfab001pJIn1F6vTN4thP",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "info": {
+       "id": "msg_1c6ecdbaf001pPQk0ErujaCnUZ",
+       "parentID": "msg_1c6ecdbac001rBEmJJd2OFt6vG",
+       "role": "assistant",
+       "mode": "build",
+       "agent": "build",
+       "path": {
+        "cwd": "/runs/s7-anthropic/actor",
+        "root": "/"
+       },
+       "cost": 0,
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "modelID": "claude-sonnet-4-5",
+       "providerID": "relay",
+       "time": {
+        "created": 1794338773935,
+        "completed": 1794338774955
+       },
+       "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+       "finish": "stop"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecdfab0025ULoKWbx3H59g1",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "info": {
+       "id": "msg_1c6ecdbaf001pPQk0ErujaCnUZ",
+       "parentID": "msg_1c6ecdbac001rBEmJJd2OFt6vG",
+       "role": "assistant",
+       "mode": "build",
+       "agent": "build",
+       "path": {
+        "cwd": "/runs/s7-anthropic/actor",
+        "root": "/"
+       },
+       "cost": 0,
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "modelID": "claude-sonnet-4-5",
+       "providerID": "relay",
+       "time": {
+        "created": 1794338773935,
+        "completed": 1794338774955
+       },
+       "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+       "finish": "stop"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecdfab003OvJvrJI1oByVUQ",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecdfac001g18VkExmcvO09n",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "info": {
+       "id": "msg_1c6ecdfac001Hk0wBmupys1106",
+       "parentID": "msg_1c6ecdbb7001VDWaIlsQ78SMdh",
+       "role": "assistant",
+       "mode": "build",
+       "agent": "build",
+       "path": {
+        "cwd": "/runs/s7-anthropic/actor",
+        "root": "/"
+       },
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "modelID": "claude-sonnet-4-5",
+       "providerID": "relay",
+       "time": {
+        "created": 1794338774956
+       },
+       "sessionID": "ses_e39132456ffeXQL18Zkmej0njs"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecdfae002ho41jlpik0FdMy",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecdfb10018dVwAdtUtY2QRv",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "part": {
+       "id": "prt_1c6ecdfb1001cqMEVZ3DfdJ1sT",
+       "messageID": "msg_1c6ecdfac001Hk0wBmupys1106",
+       "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+       "type": "step-start"
+      },
+      "time": 1794338774961
+     }
+    },
+    {
+     "id": "evt_1c6ecdfb1002nXcV9KuoA4KHy3",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "part": {
+       "id": "prt_1c6ecdfb1002Dz8N9E70SCApqn",
+       "messageID": "msg_1c6ecdfac001Hk0wBmupys1106",
+       "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+       "type": "text",
+       "text": "",
+       "time": {
+        "start": 1794338774961
+       }
+      },
+      "time": 1794338774961
+     }
+    },
+    {
+     "id": "evt_1c6ecdfb2001ZFVP9cEENytxUT",
+     "type": "message.part.delta",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "messageID": "msg_1c6ecdfac001Hk0wBmupys1106",
+      "partID": "prt_1c6ecdfb1002Dz8N9E70SCApqn",
+      "field": "text",
+      "delta": "SECOND-FINAL"
+     }
+    },
+    {
+     "id": "evt_1c6ecdfb2002rWx3GgMtCM8nQq",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "part": {
+       "id": "prt_1c6ecdfb1002Dz8N9E70SCApqn",
+       "messageID": "msg_1c6ecdfac001Hk0wBmupys1106",
+       "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+       "type": "text",
+       "text": "SECOND-FINAL",
+       "time": {
+        "start": 1794338774961,
+        "end": 1794338774962
+       }
+      },
+      "time": 1794338774962
+     }
+    },
+    {
+     "id": "evt_1c6ecdfb2003JEdh0fsuNKzaww",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "part": {
+       "id": "prt_1c6ecdfb2001x6Wl6GGTuEDPz0",
+       "reason": "stop",
+       "messageID": "msg_1c6ecdfac001Hk0wBmupys1106",
+       "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+       "type": "step-finish",
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "cost": 0
+      },
+      "time": 1794338774962
+     }
+    },
+    {
+     "id": "evt_1c6ecdfb3001ycffw7QYqXacNB",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "info": {
+       "id": "msg_1c6ecdfac001Hk0wBmupys1106",
+       "parentID": "msg_1c6ecdbb7001VDWaIlsQ78SMdh",
+       "role": "assistant",
+       "mode": "build",
+       "agent": "build",
+       "path": {
+        "cwd": "/runs/s7-anthropic/actor",
+        "root": "/"
+       },
+       "cost": 0,
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "modelID": "claude-sonnet-4-5",
+       "providerID": "relay",
+       "time": {
+        "created": 1794338774956,
+        "completed": 1794338774963
+       },
+       "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+       "finish": "stop"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecdfb3002zZ1g71nHsxCDkI",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "info": {
+       "id": "msg_1c6ecdfac001Hk0wBmupys1106",
+       "parentID": "msg_1c6ecdbb7001VDWaIlsQ78SMdh",
+       "role": "assistant",
+       "mode": "build",
+       "agent": "build",
+       "path": {
+        "cwd": "/runs/s7-anthropic/actor",
+        "root": "/"
+       },
+       "cost": 0,
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "modelID": "claude-sonnet-4-5",
+       "providerID": "relay",
+       "time": {
+        "created": 1794338774956,
+        "completed": 1794338774963
+       },
+       "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+       "finish": "stop"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecdfb4001NxwtlH6ira62Ee",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecdfb4002OR1fnECuyIyy4U",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs",
+      "status": {
+       "type": "idle"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecdfb4003ogjL2fznc37kDq",
+     "type": "session.idle",
+     "properties": {
+      "sessionID": "ses_e39132456ffeXQL18Zkmej0njs"
+     }
+    }
+   ]
+  },
+  "D_abort_model+D2_after_abort_model": {
+   "session_id": "ses_e39131018ffeU1U46VJm5pxgG9",
+   "events": [
+    {
+     "id": "evt_1c6ecefea002bBZ43KnqO400x6",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "info": {
+       "id": "msg_1c6ecefe9001w65npvAo6ARc0J",
+       "role": "user",
+       "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+       "time": {
+        "created": 1794338779113
+       },
+       "agent": "build",
+       "model": {
+        "providerID": "relay",
+        "modelID": "claude-sonnet-4-5"
+       }
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecefea003OT2U7SLUDpnd7h",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "part": {
+       "type": "text",
+       "text": "USER-ONE",
+       "messageID": "msg_1c6ecefe9001w65npvAo6ARc0J",
+       "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+       "id": "prt_1c6ecefea001PkUXER5gmrlK9E"
+      },
+      "time": 1794338779114
+     }
+    },
+    {
+     "id": "evt_1c6ecefec0014XwOqIKU0JI3u8",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecefec002EnqrItnmcTryw6",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "info": {
+       "id": "msg_1c6ecefec001XqBV4Q0CHPn6kq",
+       "parentID": "msg_1c6ecefe9001w65npvAo6ARc0J",
+       "role": "assistant",
+       "mode": "build",
+       "agent": "build",
+       "path": {
+        "cwd": "/runs/s7-anthropic/actor",
+        "root": "/"
+       },
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "modelID": "claude-sonnet-4-5",
+       "providerID": "relay",
+       "time": {
+        "created": 1794338779116
+       },
+       "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecefed001KA8EHGllyNm3U4",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6eceff2001Iv9RFNodL0Sr2d",
+     "type": "session.error",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "error": {
+       "name": "MessageAbortedError",
+       "data": {
+        "message": "Aborted"
+       }
+      }
+     }
+    },
+    {
+     "id": "evt_1c6eceff20024X8VLfh7dAY8lR",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "status": {
+       "type": "idle"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6eceff2003nA5z6Fn13OLbm3",
+     "type": "session.idle",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9"
+     }
+    },
+    {
+     "id": "evt_1c6eceff200437sUZKeKzNapbl",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "info": {
+       "id": "msg_1c6ecefec001XqBV4Q0CHPn6kq",
+       "parentID": "msg_1c6ecefe9001w65npvAo6ARc0J",
+       "role": "assistant",
+       "mode": "build",
+       "agent": "build",
+       "path": {
+        "cwd": "/runs/s7-anthropic/actor",
+        "root": "/"
+       },
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "modelID": "claude-sonnet-4-5",
+       "providerID": "relay",
+       "time": {
+        "created": 1794338779116,
+        "completed": 1794338779122
+       },
+       "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+       "error": {
+        "name": "MessageAbortedError",
+        "data": {
+         "message": "Aborted"
+        }
+       }
+      }
+     }
+    },
+    {
+     "id": "evt_1c6eceff3001g5vKUTea1FKAvG",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "status": {
+       "type": "idle"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6eceff3002AB0VIC5hV0rwaS",
+     "type": "session.idle",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9"
+     }
+    },
+    {
+     "id": "evt_1c6ecf60e001jwdjIWm5bnaweY",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "info": {
+       "id": "msg_1c6ecf60d0017nDdwa41sfG6kQ",
+       "role": "user",
+       "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+       "time": {
+        "created": 1794338780685
+       },
+       "agent": "build",
+       "model": {
+        "providerID": "relay",
+        "modelID": "claude-sonnet-4-5"
+       }
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecf60e002uC5h8dYVXeoJ0P",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "part": {
+       "type": "text",
+       "text": "USER-AFTER-ABORT",
+       "messageID": "msg_1c6ecf60d0017nDdwa41sfG6kQ",
+       "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+       "id": "prt_1c6ecf60e001V82w97ndbcbBoR"
+      },
+      "time": 1794338780686
+     }
+    },
+    {
+     "id": "evt_1c6ecf63d001gRyJsVe4TvEFpC",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecf63d002SNuNiP4IIrpEC6",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "info": {
+       "id": "msg_1c6ecf63d001NedhkmmamTD7LI",
+       "parentID": "msg_1c6ecf60d0017nDdwa41sfG6kQ",
+       "role": "assistant",
+       "mode": "build",
+       "agent": "build",
+       "path": {
+        "cwd": "/runs/s7-anthropic/actor",
+        "root": "/"
+       },
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "modelID": "claude-sonnet-4-5",
+       "providerID": "relay",
+       "time": {
+        "created": 1794338780733
+       },
+       "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecf63f001vknx3YqFNNQdZG",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecf642001ewNx24sr3xDAnJ",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "part": {
+       "id": "prt_1c6ecf642001qve63Zh7oHw2sX",
+       "messageID": "msg_1c6ecf63d001NedhkmmamTD7LI",
+       "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+       "type": "step-start"
+      },
+      "time": 1794338780738
+     }
+    },
+    {
+     "id": "evt_1c6ecf6430013KZEVDWTX6jQIf",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "part": {
+       "id": "prt_1c6ecf6430016c33PUd6WMjAPB",
+       "messageID": "msg_1c6ecf63d001NedhkmmamTD7LI",
+       "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+       "type": "text",
+       "text": "",
+       "time": {
+        "start": 1794338780739
+       }
+      },
+      "time": 1794338780739
+     }
+    },
+    {
+     "id": "evt_1c6ecf643002DclNJo9l3NUcIV",
+     "type": "message.part.delta",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "messageID": "msg_1c6ecf63d001NedhkmmamTD7LI",
+      "partID": "prt_1c6ecf6430016c33PUd6WMjAPB",
+      "field": "text",
+      "delta": "AFTER-ABORT-REPL"
+     }
+    },
+    {
+     "id": "evt_1c6ecf643003s1q6hXCTsnbY6t",
+     "type": "message.part.delta",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "messageID": "msg_1c6ecf63d001NedhkmmamTD7LI",
+      "partID": "prt_1c6ecf6430016c33PUd6WMjAPB",
+      "field": "text",
+      "delta": "Y"
+     }
+    },
+    {
+     "id": "evt_1c6ecf643004WSl4xE4ZnYnc8c",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "part": {
+       "id": "prt_1c6ecf6430016c33PUd6WMjAPB",
+       "messageID": "msg_1c6ecf63d001NedhkmmamTD7LI",
+       "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+       "type": "text",
+       "text": "AFTER-ABORT-REPLY",
+       "time": {
+        "start": 1794338780739,
+        "end": 1794338780739
+       }
+      },
+      "time": 1794338780739
+     }
+    },
+    {
+     "id": "evt_1c6ecf644001gpgfAlMRhXd08F",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "part": {
+       "id": "prt_1c6ecf644001CxELvubDA5F5Ga",
+       "reason": "stop",
+       "messageID": "msg_1c6ecf63d001NedhkmmamTD7LI",
+       "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+       "type": "step-finish",
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "cost": 0
+      },
+      "time": 1794338780740
+     }
+    },
+    {
+     "id": "evt_1c6ecf644002iYZgjiUbSQFcnB",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "info": {
+       "id": "msg_1c6ecf63d001NedhkmmamTD7LI",
+       "parentID": "msg_1c6ecf60d0017nDdwa41sfG6kQ",
+       "role": "assistant",
+       "mode": "build",
+       "agent": "build",
+       "path": {
+        "cwd": "/runs/s7-anthropic/actor",
+        "root": "/"
+       },
+       "cost": 0,
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "modelID": "claude-sonnet-4-5",
+       "providerID": "relay",
+       "time": {
+        "created": 1794338780733,
+        "completed": 1794338780741
+       },
+       "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+       "finish": "stop"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecf6450010JntdvJcxxrWFs",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "info": {
+       "id": "msg_1c6ecf63d001NedhkmmamTD7LI",
+       "parentID": "msg_1c6ecf60d0017nDdwa41sfG6kQ",
+       "role": "assistant",
+       "mode": "build",
+       "agent": "build",
+       "path": {
+        "cwd": "/runs/s7-anthropic/actor",
+        "root": "/"
+       },
+       "cost": 0,
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "modelID": "claude-sonnet-4-5",
+       "providerID": "relay",
+       "time": {
+        "created": 1794338780733,
+        "completed": 1794338780741
+       },
+       "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+       "finish": "stop"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecf645002wxPeBiYdu17x83",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecf646001DWn5EAEdypTmms",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9",
+      "status": {
+       "type": "idle"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecf646002Ktv71U7OMLnuls",
+     "type": "session.idle",
+     "properties": {
+      "sessionID": "ses_e39131018ffeU1U46VJm5pxgG9"
+     }
+    }
+   ]
+  },
+  "E_abort_tool+E2_after_abort_tool": {
+   "session_id": "ses_e3913062dffeRvLxnW5mreTScB",
+   "events": [
+    {
+     "id": "evt_1c6ecf9d60019ysGBUOGmMo0VD",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "info": {
+       "id": "msg_1c6ecf9d5001TFKAJLPW6HNlSp",
+       "role": "user",
+       "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+       "time": {
+        "created": 1794338781653
+       },
+       "agent": "build",
+       "model": {
+        "providerID": "relay",
+        "modelID": "claude-sonnet-4-5"
+       }
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecf9d6002eOW3jjEHJQQHoA",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "part": {
+       "type": "text",
+       "text": "USER-ONE",
+       "messageID": "msg_1c6ecf9d5001TFKAJLPW6HNlSp",
+       "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+       "id": "prt_1c6ecf9d6001ET6hZkLkvjEHYC"
+      },
+      "time": 1794338781654
+     }
+    },
+    {
+     "id": "evt_1c6ecf9d7002QdrlqvGnhqsHUL",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecf9d8001hhLDKF9yEsmMNb",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "info": {
+       "id": "msg_1c6ecf9d8001Us9Z5jB6nP7pJg",
+       "parentID": "msg_1c6ecf9d5001TFKAJLPW6HNlSp",
+       "role": "assistant",
+       "mode": "build",
+       "agent": "build",
+       "path": {
+        "cwd": "/runs/s7-anthropic/actor",
+        "root": "/"
+       },
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "modelID": "claude-sonnet-4-5",
+       "providerID": "relay",
+       "time": {
+        "created": 1794338781656
+       },
+       "sessionID": "ses_e3913062dffeRvLxnW5mreTScB"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecf9d9001Ul4HJOpxaR3SNj",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecf9dc00123qHGA2bnV8sG8",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "part": {
+       "id": "prt_1c6ecf9dc001BCfOlipmvRsDGT",
+       "messageID": "msg_1c6ecf9d8001Us9Z5jB6nP7pJg",
+       "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+       "type": "step-start"
+      },
+      "time": 1794338781660
+     }
+    },
+    {
+     "id": "evt_1c6ecf9dd001HpG2Q6cKvsk1Ze",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "part": {
+       "id": "prt_1c6ecf9dd001Pn7k1oD0glbFdv",
+       "messageID": "msg_1c6ecf9d8001Us9Z5jB6nP7pJg",
+       "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+       "type": "tool",
+       "tool": "auriga_slow",
+       "callID": "call_fake_10_0",
+       "state": {
+        "status": "pending",
+        "input": {},
+        "raw": ""
+       }
+      },
+      "time": 1794338781661
+     }
+    },
+    {
+     "id": "evt_1c6ecf9de0016xIwhLvFH0RP5N",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "part": {
+       "type": "tool",
+       "tool": "auriga_slow",
+       "callID": "call_fake_10_0",
+       "state": {
+        "status": "running",
+        "input": {
+         "duration_s": 60
+        },
+        "time": {
+         "start": 1794338781662
+        }
+       },
+       "id": "prt_1c6ecf9dd001Pn7k1oD0glbFdv",
+       "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+       "messageID": "msg_1c6ecf9d8001Us9Z5jB6nP7pJg"
+      },
+      "time": 1794338781662
+     }
+    },
+    {
+     "id": "evt_1c6ed059e001iHqzdIvwLMtYkS",
+     "type": "session.error",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "error": {
+       "name": "MessageAbortedError",
+       "data": {
+        "message": "Aborted"
+       }
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ed059e002Z9wY4BJ98iqjS9",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "status": {
+       "type": "idle"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ed059e003WMSjZf8gsuMoiC",
+     "type": "session.idle",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB"
+     }
+    },
+    {
+     "id": "evt_1c6ed069b001ZgVv7Xv3gnv78o",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "part": {
+       "type": "tool",
+       "tool": "auriga_slow",
+       "callID": "call_fake_10_0",
+       "state": {
+        "status": "error",
+        "input": {
+         "duration_s": 60
+        },
+        "time": {
+         "start": 1794338781662,
+         "end": 1794338784922
+        },
+        "error": "Tool execution aborted",
+        "metadata": {
+         "interrupted": true
+        }
+       },
+       "id": "prt_1c6ecf9dd001Pn7k1oD0glbFdv",
+       "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+       "messageID": "msg_1c6ecf9d8001Us9Z5jB6nP7pJg"
+      },
+      "time": 1794338784923
+     }
+    },
+    {
+     "id": "evt_1c6ed069b002GYGJfD53C6W1oO",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "info": {
+       "id": "msg_1c6ecf9d8001Us9Z5jB6nP7pJg",
+       "parentID": "msg_1c6ecf9d5001TFKAJLPW6HNlSp",
+       "role": "assistant",
+       "mode": "build",
+       "agent": "build",
+       "path": {
+        "cwd": "/runs/s7-anthropic/actor",
+        "root": "/"
+       },
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "modelID": "claude-sonnet-4-5",
+       "providerID": "relay",
+       "time": {
+        "created": 1794338781656,
+        "completed": 1794338784923
+       },
+       "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+       "error": {
+        "name": "MessageAbortedError",
+        "data": {
+         "message": "Aborted"
+        }
+       }
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ed069c00137XY0bLPFsaLn1",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "status": {
+       "type": "idle"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ed069c002xNBfzlgBZI1yg0",
+     "type": "session.idle",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB"
+     }
+    },
+    {
+     "id": "evt_1c6ed0e77001HKtHKlfP40ou4x",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "info": {
+       "id": "msg_1c6ed0e77001blIZOdq5b7IYPG",
+       "role": "user",
+       "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+       "time": {
+        "created": 1794338786935
+       },
+       "agent": "build",
+       "model": {
+        "providerID": "relay",
+        "modelID": "claude-sonnet-4-5"
+       }
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ed0e78001TumLF2l2JopeBI",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "part": {
+       "type": "text",
+       "text": "USER-AFTER-ABORT-TOOL",
+       "messageID": "msg_1c6ed0e77001blIZOdq5b7IYPG",
+       "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+       "id": "prt_1c6ed0e77002Rr5hHcvtDj804s"
+      },
+      "time": 1794338786936
+     }
+    },
+    {
+     "id": "evt_1c6ed0e7a001CxH5lwba5Ktj0O",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ed0e7b001905699B2NCdVN3",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "info": {
+       "id": "msg_1c6ed0e7b001EssBFfyp3ysNKR",
+       "parentID": "msg_1c6ed0e77001blIZOdq5b7IYPG",
+       "role": "assistant",
+       "mode": "build",
+       "agent": "build",
+       "path": {
+        "cwd": "/runs/s7-anthropic/actor",
+        "root": "/"
+       },
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "modelID": "claude-sonnet-4-5",
+       "providerID": "relay",
+       "time": {
+        "created": 1794338786939
+       },
+       "sessionID": "ses_e3913062dffeRvLxnW5mreTScB"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ed0e7c0010xe4yUSUNXfsjA",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ed0e80001ikJsrt77u9ZuNK",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "part": {
+       "id": "prt_1c6ed0e800011MzywC8njnY6U0",
+       "messageID": "msg_1c6ed0e7b001EssBFfyp3ysNKR",
+       "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+       "type": "step-start"
+      },
+      "time": 1794338786944
+     }
+    },
+    {
+     "id": "evt_1c6ed0e80002hAYm6SKWeCtOXp",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "part": {
+       "id": "prt_1c6ed0e80002fnO5fcm0RdCViH",
+       "messageID": "msg_1c6ed0e7b001EssBFfyp3ysNKR",
+       "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+       "type": "text",
+       "text": "",
+       "time": {
+        "start": 1794338786944
+       }
+      },
+      "time": 1794338786944
+     }
+    },
+    {
+     "id": "evt_1c6ed0e810010OjGIMLDZteGFR",
+     "type": "message.part.delta",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "messageID": "msg_1c6ed0e7b001EssBFfyp3ysNKR",
+      "partID": "prt_1c6ed0e80002fnO5fcm0RdCViH",
+      "field": "text",
+      "delta": "AFTER-ABORT-TOOL"
+     }
+    },
+    {
+     "id": "evt_1c6ed0e81002YW4Vc8ngAg4JFj",
+     "type": "message.part.delta",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "messageID": "msg_1c6ed0e7b001EssBFfyp3ysNKR",
+      "partID": "prt_1c6ed0e80002fnO5fcm0RdCViH",
+      "field": "text",
+      "delta": "-REPLY"
+     }
+    },
+    {
+     "id": "evt_1c6ed0e81003F8mlJ3Xp1gZQcE",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "part": {
+       "id": "prt_1c6ed0e80002fnO5fcm0RdCViH",
+       "messageID": "msg_1c6ed0e7b001EssBFfyp3ysNKR",
+       "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+       "type": "text",
+       "text": "AFTER-ABORT-TOOL-REPLY",
+       "time": {
+        "start": 1794338786944,
+        "end": 1794338786945
+       }
+      },
+      "time": 1794338786945
+     }
+    },
+    {
+     "id": "evt_1c6ed0e81004St2HxBAwXKT7jA",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "part": {
+       "id": "prt_1c6ed0e81001yr4cXcGaqRWvtP",
+       "reason": "stop",
+       "messageID": "msg_1c6ed0e7b001EssBFfyp3ysNKR",
+       "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+       "type": "step-finish",
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "cost": 0
+      },
+      "time": 1794338786945
+     }
+    },
+    {
+     "id": "evt_1c6ed0e8200100n6kABY52BSPG",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "info": {
+       "id": "msg_1c6ed0e7b001EssBFfyp3ysNKR",
+       "parentID": "msg_1c6ed0e77001blIZOdq5b7IYPG",
+       "role": "assistant",
+       "mode": "build",
+       "agent": "build",
+       "path": {
+        "cwd": "/runs/s7-anthropic/actor",
+        "root": "/"
+       },
+       "cost": 0,
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "modelID": "claude-sonnet-4-5",
+       "providerID": "relay",
+       "time": {
+        "created": 1794338786939,
+        "completed": 1794338786946
+       },
+       "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+       "finish": "stop"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ed0e820022WOQS0iQ7jI1pb",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "info": {
+       "id": "msg_1c6ed0e7b001EssBFfyp3ysNKR",
+       "parentID": "msg_1c6ed0e77001blIZOdq5b7IYPG",
+       "role": "assistant",
+       "mode": "build",
+       "agent": "build",
+       "path": {
+        "cwd": "/runs/s7-anthropic/actor",
+        "root": "/"
+       },
+       "cost": 0,
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "modelID": "claude-sonnet-4-5",
+       "providerID": "relay",
+       "time": {
+        "created": 1794338786939,
+        "completed": 1794338786946
+       },
+       "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+       "finish": "stop"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ed0e83001dVUTjfs9PggwIM",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ed0e83002F26mgPn6eyNkOL",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB",
+      "status": {
+       "type": "idle"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ed0e83003Eu0jKNQZ6td723",
+     "type": "session.idle",
+     "properties": {
+      "sessionID": "ses_e3913062dffeRvLxnW5mreTScB"
+     }
+    }
+   ]
+  }
+ }
+}

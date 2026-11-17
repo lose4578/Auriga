@@ -11,40 +11,10 @@ from unittest.mock import patch
 from io import BytesIO
 
 from auriga.cortex.session.codex_sandbox import CodexSandbox, _UnixForwarder
-from auriga.cortex.session.system_runtime import system_runtime_mounts
+from support.host_capabilities import bubblewrap_namespaces, require
 
 
-def _sandbox_available():
-    try:
-        bwrap = CodexSandbox._find_host_tool("bwrap")
-        python = CodexSandbox._find_python_runtime()
-    except RuntimeError:
-        return False
-    if not bwrap: return False
-    if CodexSandbox._probe_user_namespace(bwrap, python, os.getuid(), os.getgid()): return True
-    sudo = CodexSandbox._find_host_tool("sudo")
-    setpriv = CodexSandbox._find_host_tool("setpriv")
-    if not sudo or not setpriv: return False
-    try:
-        runtime_mounts = system_runtime_mounts()
-        command = [sudo, "-n", bwrap, "--unshare-pid", "--unshare-net", "--unshare-ipc",
-                   "--unshare-uts", "--dir", "/usr", "--symlink", "usr/bin", "/bin",
-                   "--dir", "/lib", "--dir", "/lib64", "--proc", "/proc", "--dev", "/dev",
-                   "--tmpfs", "/tmp"]
-        parents = {parent for _, destination in runtime_mounts for parent in destination.parents
-                   if parent != Path("/") and parent not in (Path("/usr"), Path("/lib"), Path("/lib64"))}
-        for parent in sorted(parents, key=lambda path: (len(path.parts), str(path))):
-            command.extend(["--dir", str(parent)])
-        for source, destination in runtime_mounts:
-            command.extend(["--ro-bind", str(source), str(destination)])
-        command.extend(["--", str(python), "-c", "pass"])
-        probe = subprocess.run(command, capture_output=True, timeout=5)
-        return probe.returncode == 0
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-
-
-@unittest.skipUnless(_sandbox_available(), "requires rootful bubblewrap namespace support")
+@require(bubblewrap_namespaces, "the native Codex actor sandbox runs real bubblewrap namespaces")
 class CodexSandboxTests(unittest.TestCase):
     @staticmethod
     def _python(): return CodexSandbox._find_python_runtime()

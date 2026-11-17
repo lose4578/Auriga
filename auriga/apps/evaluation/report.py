@@ -6,9 +6,11 @@ from pathlib import Path
 import sqlite3
 import tomllib
 
+from auriga.apps.evaluation.native_evidence import load_native_evidence
 from auriga.apps.library.scoring import load_effective_summary
 from auriga.core.storage.store import open_read_store
-from auriga.cortex.session.usage import account_usage, aggregate_accounting, load_price_card
+from auriga.cortex.session.usage import (TOKEN_FIELDS, RelayUsageTotal, account_usage, add_served_model, aggregate_accounting,
+                                        counting_basis, load_price_card, responses_counters)
 
 
 def _recovery_delivery(root, manifest, store):
@@ -45,34 +47,12 @@ def _recovery_delivery(root, manifest, store):
                 attempts.append((presentation.restore(payload["prompt"]), context))
         after = events[-1]["server_seq"]
 
-    path = root / "codex-raw.jsonl"
-    sent = []
-    if path.exists():
-        with path.open() as stream:
-            for line in stream:
-                record = json.loads(line)
-                if (not isinstance(record, dict) or not isinstance(record.get("message"), dict)
-                        or record.get("direction") not in ("sent", "received")):
-                    raise ValueError("invalid_native_rpc_record")
-                message = record["message"]
-                if "params" in message and not isinstance(message["params"], dict):
-                    raise ValueError("invalid_native_rpc_record")
-                if record["direction"] != "sent" or message.get("method") != "turn/start":
-                    continue
-                params = message.get("params", {})
-                inputs = params.get("input")
-                if (not isinstance(params.get("threadId"), str) or not params["threadId"]
-                        or not isinstance(inputs, list) or any(not isinstance(item, dict)
-                            or not isinstance(item.get("type"), str)
-                            or (item["type"] == "text" and not isinstance(item.get("text"), str))
-                            for item in inputs)):
-                    raise ValueError("invalid_native_turn_start")
-                if thread_id and params["threadId"] == thread_id:
-                    # restore only reads saved aliases; never allocate new references
-                    # or rerun today's producer projection against an old archive.
-                    sent.append({presentation.restore(item["text"]) for item in inputs if item["type"] == "text"})
+    evidence = load_native_evidence(root, manifest, store, profile="report")
+    # restore only reads saved aliases; never allocate new references
+    # or rerun today's producer projection against an old archive.
+    sent = [{presentation.restore(text) for text in texts} for texts in evidence.submitted_prompts]
 
-    available = path.exists() and thread_id is not None
+    available = evidence.log_present and thread_id is not None
     matched, recovery_sent, versions = set(), 0, {}
     for prompt, context in attempts:
         index = next((index for index, texts in enumerate(sent) if index not in matched and prompt in texts), None)
@@ -94,6 +74,70 @@ def _recovery_delivery(root, manifest, store):
         versions=[dict(version=key, attempt_count=value["attempt_count"],
             native_sent_count=value["native_sent_count"] if available else None)
             for key, value in sorted(versions.items(), key=lambda item: item[0] or "")] if thread_id else None)
+
+
+def _agent_conditions(manifest, counting=None):
+    """Agent runtime of a run. Manifests without the agent_backend block predate backend selection and are Codex runs.
+
+    ``counting``: the run's recorded counting-semantics string when the manifest block lacks it (summary
+    ``model_requests.counting``). ``counting_basis`` maps equivalent strings to one comparison basis, so Codex and
+    new-backend runs that count the same way report the same basis."""
+    # agent_cli is the CLI version only: executable paths and hashes are machine-specific provenance and would make
+    # otherwise identical conditions differ across checkouts and hosts. Codex archives fall back to manifest codex_cli.
+    block = manifest.get("agent_backend") if isinstance(manifest.get("agent_backend"), dict) else {}
+    kind, cli = block.get("kind"), block.get("cli")
+    version = cli.get("version") if isinstance(cli, dict) else None
+    kind = kind if isinstance(kind, str) and kind else "codex"
+    if not isinstance(version, str) and kind == "codex" and isinstance(manifest.get("codex_cli"), str):
+        version = manifest["codex_cli"]
+    # Evidence helper path (design 9.6). Pre-backend Codex archives always used the Codex evidence agent; for any
+    # other backend a missing record stays unknown.
+    client = block.get("evidence_client", manifest.get("evidence_client"))
+    if not isinstance(client, str) or not client:
+        client = "codex_agent" if kind == "codex" and "agent_backend" not in manifest else None
+    effort = block.get("native_effort")
+    recorded = block.get("counting") if isinstance(block.get("counting"), str) else counting
+    return {"agent_backend": kind, "agent_cli": version if isinstance(version, str) else None,
+            "evidence_client": client, "native_effort": effort if isinstance(effort, dict) else None,
+            "counting_basis": counting_basis(recorded)}
+
+
+def _event_relay_usage(store):
+    """Relay usage and served models of an archive that predates ``runtime/model_usage_relay`` (Codex Responses
+    runs), derived from its ``model.*`` events through the same field mapping: ``(record, served_models)``, or
+    ``(None, None)`` when no delivered completion was recorded."""
+    kinds = ("model.model_request_finished", "model.model_call_completed", "model.model_call_finished")
+    total, served, attempts, after = RelayUsageTotal(), {}, {}, 0
+    while page := store.events_by_type(kinds, after=after, limit=1000):
+        after = page[-1]["server_seq"]
+        for event in page:
+            payload, call = event["payload"], event["payload"].get("logical_call_id")
+            if call is None:
+                continue
+            if event["type"] == "model.model_request_finished":
+                attempts[call] = (responses_counters(payload.get("usage")) if payload.get("usage_known") else None,
+                                  payload.get("served_model"))
+            elif event["type"] == "model.model_call_completed":
+                counters, model = attempts.pop(call, (None, None))
+                total.add(counters)
+                served = add_served_model(served, model)
+            else:
+                attempts.pop(call, None)
+    if not total.calls:
+        return None, None
+    return dict(total=dict(total.total), unknown_calls=total.unknown_calls, calls=total.calls), served
+
+
+def _usage_methods(native, relay):
+    """Native snapshot vs relay measurement per counter: ``{field: {native, relay, delta}}`` (delta None when either
+    is unknown). The two are different measurement methods and are shown side by side, never merged."""
+    native = native if isinstance(native, dict) else {}
+    relay = (relay or {}).get("total") if isinstance((relay or {}).get("total"), dict) else {}
+    result = {}
+    for key in TOKEN_FIELDS:
+        a, b = native.get(key), relay.get(key)
+        result[key] = dict(native=a, relay=b, delta=b - a if type(a) is int and type(b) is int else None)
+    return result
 
 
 def summarize(root, price_card=None):
@@ -123,10 +167,25 @@ def summarize(root, price_card=None):
         deliveries = sum(len(value.get("images", [])) for value in store.records("delivery")
                          if value.get("delivered_to_actor"))
         recovery = _recovery_delivery(root, manifest, store)
+        model_requests = summary.get("model_requests") or store.read_state("runtime", "model_requests") or {}
+        served_models = summary.get("served_models") or model_requests.get("served_models")
+        relay, relay_source = summary.get("model_usage_relay"), "recorded"
+        if not isinstance(relay, dict):
+            relay = store.read_state("runtime", "model_usage_relay")
+        if not isinstance(relay, dict) and _agent_conditions(manifest)["agent_backend"] == "codex":
+            # Archives from before the relay measurement was recorded: same field mapping, from the model events.
+            relay, derived = _event_relay_usage(store)
+            relay_source, served_models = "derived_from_model_events", served_models or derived
+        if not isinstance(relay, dict):
+            relay, relay_source = None, None
     model, provider = manifest.get("model"), manifest.get("provider")
     identity_source = "manifest" if model and provider else None
     saved_accounting = summary.get("token_accounting")
-    native = account_usage(snapshot)
+    # Relay-accumulating backends label their accounting "relay.<wire>.usage.sum"; keep that label rather than
+    # re-deriving it under the Codex native-snapshot source.
+    saved_source = saved_accounting.get("source") if isinstance(saved_accounting, dict) else None
+    source = saved_source if isinstance(saved_source, str) and saved_source.startswith("relay.") else None
+    native = account_usage(snapshot, **({"source": source} if source else {}))
     # TUI startup can fail after model usage but before manifest creation. The
     # final summary still records accounting. Require this exact native snapshot,
     # rather than borrowing identity/costs from a stale or foreign thread.
@@ -155,10 +214,11 @@ def summarize(root, price_card=None):
         accounting = dict(saved_accounting)
     else:
         accounting = account_usage(snapshot, model=model, provider=provider,
-                                   price_card=price_card if price_card is not None else manifest.get("price_card"))
+                                   price_card=price_card if price_card is not None else manifest.get("price_card"),
+                                   **({"source": source} if source else {}))
     accounting["identity_source"] = identity_source
     return dict(run_dir=str(root), run_id=manifest.get("run_id", root.name),
-                conditions={**{key: manifest.get(key) for key in ("effort", "codex_sdk", "observation_profile", "clock_policy", "max_actions", "actor_wait_budget_s", "task_notes", "task_notes_source", "task_notes_config", "public_task_rules", "task_planning", "actor_stall_policy", "benchmark_terminal_policy", "runtime_protocol", "model_request_limit", "model_request_timeout_s", "no_progress_timeout_s", "startup_timeout_s", "pi05_enabled", "visual_review_model")}, "model": model, "provider": provider},
+                conditions={**_agent_conditions(manifest, model_requests.get("counting")), **{key: manifest.get(key) for key in ("effort", "codex_sdk", "observation_profile", "clock_policy", "max_actions", "actor_wait_budget_s", "task_notes", "task_notes_source", "task_notes_config", "public_task_rules", "task_planning", "actor_stall_policy", "benchmark_terminal_policy", "runtime_protocol", "model_request_limit", "model_request_timeout_s", "no_progress_timeout_s", "startup_timeout_s", "pi05_enabled", "visual_review_model")}, "model": model, "provider": provider},
                 task=manifest.get("task", read("experiment.json").get("task")),
                 seed=manifest.get("seed"), layout_id=manifest.get("layout_id"),
                 status=summary.get("status"), valid_episode=summary.get("valid_episode"),
@@ -167,6 +227,9 @@ def summarize(root, price_card=None):
                 task_success=summary.get("task_success"), normalized_score=summary.get("normalized_score"),
                 action_count=summary.get("action_count"), elapsed_wall_s=summary.get("elapsed_wall_s"),
                 native_episode=summary.get("native_episode"), model_requests=summary.get("model_requests"),
+                counting=model_requests.get("counting"), served_models=served_models or None,
+                model_usage_relay=relay, model_usage_relay_source=relay_source,
+                usage_methods=_usage_methods(usage, relay) if relay else None,
                 termination_reason=summary.get("termination_reason"),
                 termination_authority=summary.get("termination_authority"),
                 actor_stall=summary.get("actor_stall"),

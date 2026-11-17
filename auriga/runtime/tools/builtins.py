@@ -70,6 +70,35 @@ def geometry_effect(args):
     return 'record' if args.get('request', {}).get('kind') in {'register_target', 'refresh_target', 'forget_target', 'grasp_candidates', 'place_candidates'} else 'read'
 
 
+# Request-dependent ToolSpec.parallel classifiers (moved verbatim from the former
+# codex.py name allowlist). True = mutates no Harness/world state for this request.
+def geometry_parallel(args):
+    # Only an explicit commit_scene (top level or inside request) is ordered.
+    request = args.get('request')
+    commit = args.get('commit_scene') or (isinstance(request, dict) and request.get('commit_scene'))
+    return not commit
+
+
+def depth_parallel(args):
+    # RGB-D kinds (measurements, candidates, target handles) are ordered.
+    request = args.get('request')
+    return isinstance(request, dict) and request.get('kind') not in DEPTH_KINDS
+
+
+def observe_parallel(args):
+    # Re-cropping a saved observation captures nothing; a fresh capture replaces harness.latest.
+    return args.get('observation_id') is not None and args.get('crop') is not None
+
+
+def plan_parallel(args):
+    return args.get('operation') == 'read'
+
+
+def memory_parallel(args):
+    request = args.get('request')
+    return isinstance(request, dict) and request.get('kind') in {'help', 'query'}
+
+
 def _bind(handler, runtime):
     def invoke(context, arguments, correlation):
         if runtime is None:
@@ -106,6 +135,11 @@ def create_registry(extra_specs=(), *, runtime=None):
     effects = dict(robot_action=action_effect, robot_wait='physical', robot_policy_step='physical',
         program_run='physical', task_plan=plan_effect, operation_memory=memory_effect,
         history_annotate_action='record', depth_query=geometry_effect, geometry_query=geometry_effect)
+    parallel = dict(geometry_query=geometry_parallel, depth_query=depth_parallel, robot_observe=observe_parallel,
+        task_plan=plan_parallel, operation_memory=memory_parallel, robot_information=True,
+        robot_contact_overlay=True, robot_action_status=True, robot_capabilities=True, history_list_actions=True,
+        history_view_observation=True, history_read_trace=True, program_status=True, vision_compare=True,
+        pose_plan=True)
     specs = []
     for name, definition in definitions.items():
         roles = {'actor', 'program', 'trusted_legacy'}
@@ -118,5 +152,5 @@ def create_registry(extra_specs=(), *, runtime=None):
         specs.append(ToolSpec(definition, _bind(getattr(handlers, name), runtime), frozenset(roles),
             effects.get(name, 'read'), partial(unavailable, name), legacy_schema,
             api_version='1.1' if name == 'robot_action' else '1.0',
-            output_schemas=output_schemas(name)))
+            output_schemas=output_schemas(name), parallel=parallel.get(name, False)))
     return ToolRegistry([*specs, *extra_specs])

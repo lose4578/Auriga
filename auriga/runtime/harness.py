@@ -14,7 +14,8 @@ from ..robot.model.grasp_contact import contact_target_feedback
 from .actions.home_check import HomePoseCheck
 from ..robot.motion.motion_speed import SPEED_INPUT_FIELDS, SPEED_EFFECTIVE_FIELDS
 from ..robot.motion.action_compilation import validate_backend_action
-from ..cortex.context.task_planning import TaskPlanning
+from ..cortex.context.task_planning import TaskPlanning, decision_reminder_text
+from ..cortex.agents.base import read_agent_identity
 from ..perception.scene.store import SceneStore
 from ..robot.model.geometry import GeometryTools
 from ..core.observation_policy import LEGACY_ACTOR_PROFILE, require_actor_observation, actor_robot_state, reject_privileged, has_calibration, allows_depth
@@ -26,6 +27,12 @@ from ..core.tool_output import (StructuredText, ToolOutput, ToolResponse, output
 
 
 _UNSET = object()
+
+# Decision-context reminder channels (design 04 §4.5); recorded on model_context.* events.
+# Codex: CodexSession re-injects the reminder as an assistant message into its own /responses/compact request.
+REMINDER_IN_COMPACT_REQUEST = "compact_request_assistant_message"
+# Other agent backends: Harness.handle_tool appends it to the next actor tool response after a context reset.
+REMINDER_IN_TOOL_RESULT = "post_compaction_tool_result"
 
 from ..core.presentation.feedback_delivery import execution_unconfirmed
 
@@ -62,6 +69,24 @@ def _execution_acknowledgement(raw):
 
 
 class Harness:
+    # Channel recorded on actor deliveries ("delivery" records): "codex_tool" for the Codex backend (unchanged),
+    # "agent_tool" for other agent backends. Set by Workbench from the session's backend_kind.
+    delivery_channel = "codex_tool"
+    # Forced full delivery (design 04 §4.3). False (default; Codex): an image, static observation metadata field,
+    # capability summary or program-log excerpt already delivered in the current model-context epoch may be left out
+    # of a later actor tool result. True: _model_context_epoch() carries a fresh marker on every call, so every actor
+    # tool result is complete and nothing delivered earlier is assumed to be in the model's context. Workbench sets it
+    # right after session.start() from AgentSession.context_delivery ("full" -> True).
+    context_epoch_volatile = False
+    # Where the decision-context reminder goes after a model-context reset: REMINDER_IN_COMPACT_REQUEST (default;
+    # Codex, the Harness never adds it) or REMINDER_IN_TOOL_RESULT (other backends: handle_tool sideband). Set by
+    # Workbench from the session's backend_kind.
+    decision_reminder_channel = REMINDER_IN_COMPACT_REQUEST
+    # True while a reported model-context reset waits for its reminder: the next actor tool response returned by
+    # handle_tool gains one inputText item with decision_reminder_text(...), then the flag clears. Set only by
+    # model_context_reset() and only on the REMINDER_IN_TOOL_RESULT channel.
+    decision_reminder_due = False
+
     def __init__(self, store, robot, max_actions=None, actor_payload_profile=_UNSET, enable_wait=_UNSET,
                  observation_profile=None, motion_review=None, grasp_memory_store=None, vision_compare=_UNSET, config=None,
                  task_plan_required=False, tool_specs=()):
@@ -145,6 +170,9 @@ class Harness:
                            if self.config.features.completion_guidance in {"hook", "both"} else None)
         self.capabilities = None
         self.lock = threading.RLock()
+        # Guards decision_reminder_due: the session reports resets on its relay/reader thread while tool workers
+        # (possibly several in parallel) consume the flag in handle_tool.
+        self._decision_reminder_lock = threading.Lock()
         self.robot_lock = threading.Lock()
         self.policy_lock = threading.Lock()
         self.cancel = threading.Event()
@@ -586,10 +614,82 @@ class Harness:
 
     def _model_context_epoch(self):
         proxy = getattr(self, "model_proxy", None)
-        return (dict(self.identity), self.thread_id,
-                self.store.read_state("runtime", "image_context_epoch"),
-                self.store.read_state("runtime", "codex", {}).get("app_server_instance_id"),
-                getattr(proxy, "transport_id", None), getattr(proxy, "image_context_epoch", None))
+        # Codex: the identity's instance_id is runtime/codex app_server_instance_id (same value as before).
+        epoch = (dict(self.identity), self.thread_id,
+                 self.store.read_state("runtime", "image_context_epoch"),
+                 (read_agent_identity(self.store) or {}).get("instance_id"),
+                 getattr(proxy, "transport_id", None), getattr(proxy, "image_context_epoch", None))
+        if self.context_epoch_volatile:
+            # Forced full delivery: no two calls share an epoch, so every delivery baseline (views, static
+            # metadata, capability summary, program logs) is discarded and each tool result is complete.
+            epoch += (new_id("volatile-context"),)
+        return epoch
+
+    def model_context_reset(self, reason):
+        """The agent session reports that its model may have lost earlier context (``AgentSession.on_context_reset``).
+
+        reason: short non-empty str naming the cause, e.g. ``"native_context_compaction"``,
+        ``"relay_context_discontinuity"``, ``"tool_reply_delivery_uncertain"`` or ``"agent_resume_after_unclean_exit"``;
+        a non-str or empty value is recorded as ``"unspecified"``. On the ``REMINDER_IN_TOOL_RESULT`` channel it sets
+        ``decision_reminder_due`` so the next actor tool response carries the decision-context reminder; on the Codex
+        channel the flag is left alone (Codex reminds through its compaction request). Always records the observer
+        event ``model_context.reset`` ``{reason, decision_reminder_channel, decision_reminder_due}``. The delivery
+        epoch is not changed here: the session has already written ``runtime/image_context_epoch``. Safe from any
+        thread; never raises for an unwritable Store (the flag is the control effect, the event is audit only).
+        Returns None.
+        """
+        reason = reason if isinstance(reason, str) and reason else "unspecified"
+        sideband = self.decision_reminder_channel == REMINDER_IN_TOOL_RESULT
+        if sideband:
+            with self._decision_reminder_lock:
+                self.decision_reminder_due = True
+        try:
+            self.store.event("model_context.reset", dict(reason=reason,
+                decision_reminder_channel=self.decision_reminder_channel, decision_reminder_due=sideband))
+        except Exception:
+            pass
+
+    def _deliver_decision_reminder(self, response, correlation):
+        """Append the due decision-context reminder to one actor tool ``response`` (design 04 §4.5).
+
+        The appended ``inputText`` item carries ``decision_reminder_text(task_planning.decision_context(...))`` after
+        ``ActorPresentation.present_text`` -- the same text Codex's compaction request carries after its egress scrub.
+        Exactly one response consumes the flag. Nothing is added (and the flag clears) when no plan is stored and
+        planning is optional, as on Codex. If the reminder cannot be built, ``response`` is returned unchanged with
+        every executed fact and receipt intact, the flag stays due for the next response and the observer event
+        ``model_context.decision_reminder_failed {error_type}`` is recorded. A response that is not a
+        ``{"contentItems": [...]}`` envelope is returned unchanged and leaves the flag due.
+        """
+        if not self.decision_reminder_due:
+            return response
+        if not isinstance(response, dict) or not isinstance(response.get("contentItems"), list):
+            return response
+        failure = None
+        with self._decision_reminder_lock:
+            if not self.decision_reminder_due:
+                return response
+            try:
+                context = self.task_planning.decision_context(self.store.identity)
+                text = (None if context is None and not self.task_planning.required
+                        else self.actor_presentation.present_text(decision_reminder_text(context)))
+            except Exception as error:
+                failure = type(error).__name__
+            else:
+                self.decision_reminder_due = False
+        if failure is not None:
+            try:
+                self.store.event("model_context.decision_reminder_failed", dict(error_type=failure), correlation)
+            except Exception:
+                pass
+            return response
+        if text is not None:
+            response = dict(response, contentItems=[*response["contentItems"], dict(type="inputText", text=text)])
+        try:
+            self.store.event("model_context.decision_reminder_delivered", dict(
+                included=text is not None, plan_revision=(context or {}).get("revision")), correlation)
+        except Exception:
+            pass
+        return response
 
     def observation_content(self, bundle, correlation, camera_id=None, roi=None, scale=1, numeric_only=False,
                             *, feedback_action=None, feedback_receipt=None, detail=None,
@@ -765,7 +865,7 @@ class Harness:
             metrics["omitted_transport_bytes_unavailable"] = omitted_bytes_error
         self.store.save("delivery", new_id("delivery"), dict(observation_id=bundle["observation_id"], correlation=correlation,
                                                              image_selection=selection, image_metrics=metrics,
-                                                             images=delivered, delivered_to_actor=not bool(correlation.get("program_id")), audience="actor_program" if correlation.get("program_id") else "astra_model", delivery_channel="program_fd" if correlation.get("program_id") else "codex_tool"))
+                                                             images=delivered, delivered_to_actor=not bool(correlation.get("program_id")), audience="actor_program" if correlation.get("program_id") else "astra_model", delivery_channel="program_fd" if correlation.get("program_id") else self.delivery_channel))
         self.store.event("observation.delivered", {"images": delivered, "image_selection": selection, "image_metrics": metrics,
             "audience":"actor_program" if correlation.get("program_id") else "astra_model","delivered_to_model":is_model},
             {**correlation, "observation_id": bundle["observation_id"]})
@@ -792,7 +892,8 @@ class Harness:
                            item_id=self.call_items.get(params["callId"], params["callId"]))
         if name in {'program_run', 'program_status'}:
             correlation['actor_log_delivery'] = True
-        self.store.save("tool_call", params["callId"], dict(params=params, correlation=correlation, tool_call_id_source="native_callId"))
+        self.store.save("tool_call", params["callId"], dict(params=params, correlation=correlation,
+                        tool_call_id_source=params.get("callIdSource", "native_callId")))
         try:
             result = self.invoke(name, self.actor_output.restore(args), correlation, role="actor")
             response = self.actor_output.present(result, tool=name)
@@ -808,7 +909,7 @@ class Harness:
             raise
         if not response.get('success', False):
             self._invalidate_actor_delivery(params['callId'])
-        return response
+        return self._deliver_decision_reminder(response, correlation)
 
     def _invalidate_actor_delivery(self, call_id):
         # A producer may already have prepared RGB/program baselines when the

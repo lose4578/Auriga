@@ -22,6 +22,7 @@ from auriga.core.config import Config
 from auriga.core.storage.images import image_url, store_image_settings
 from auriga.core.storage.store import Store
 from auriga.cortex.context.task_planning import TaskPlanning
+from support.host_capabilities import bubblewrap_namespaces, require
 
 
 SCHEMA = dict(type="object", properties=dict(assessment=dict(type="string")), required=["assessment"], additionalProperties=False)
@@ -312,6 +313,7 @@ class EvidenceAgentTest(unittest.TestCase):
 
 
 class NativeEvidenceAgentTest(unittest.TestCase):
+    @require(bubblewrap_namespaces, "starts the native Codex actor inside its bubblewrap namespace sandbox")
     def test_real_official_agent_thread_image_schema_and_shared_budget(self):
         self._run_native_fixture(sandbox_enabled=True)
 

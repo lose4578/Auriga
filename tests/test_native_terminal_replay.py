@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import patch
 
 from auriga.cortex.session.native_terminal_replay import CACHE_VERSION, NativeReplayError, NativeTerminalReplay
+from support.host_capabilities import native_replay_sandbox, require
 
 
 THREAD = "01a100bb-1592-7820-a7bc-5ed3e48aaa50"
@@ -88,6 +89,7 @@ time.sleep(30)
         return {str(path.relative_to(self.evidence)): hashlib.sha256(path.read_bytes()).hexdigest()
                 for path in self.evidence.rglob("*") if path.is_file()}
 
+    @require(native_replay_sandbox, "replays the native CLI under the Landlock + seccomp replay sandbox")
     def test_native_bytes_are_cached_without_auth_archive_writes_or_new_turns(self):
         before = self.fingerprint()
         self.assertTrue(self.replay.available(self.evidence, THREAD))
@@ -118,6 +120,7 @@ time.sleep(30)
                                str(result["path"].parent / "workspace"), "-s", "read-only",
                                "-a", "never", THREAD])
 
+    @require(native_replay_sandbox, "replays the native CLI under the Landlock + seccomp replay sandbox")
     def test_concurrent_requests_share_one_complete_capture(self):
         with ThreadPoolExecutor(max_workers=2) as pool:
             futures = [pool.submit(self.replay.get, self.evidence, THREAD) for _ in range(2)]
@@ -125,6 +128,7 @@ time.sleep(30)
         self.assertEqual(first, second)
         self.assertEqual(len(list((self.root / "cache").glob("*/metadata.json"))), 1)
 
+    @require(native_replay_sandbox, "replays the native CLI under the Landlock + seccomp replay sandbox")
     def test_source_change_and_corrupt_cache_are_not_reused(self):
         first = self.replay.get(self.evidence, THREAD)
         metadata_path = first["path"].parent / "metadata.json"
@@ -160,6 +164,7 @@ time.sleep(30)
         with self.assertRaises(NativeReplayError):
             NativeTerminalReplay(link, command_prefix=(sys.executable,), cli_version="fixture")
 
+    @require(native_replay_sandbox, "replays the native CLI under the Landlock + seccomp replay sandbox")
     def test_failure_and_deadline_never_publish_a_ready_cache(self):
         for program in ("print('Error: account/read failed during TUI bootstrap: unavailable')\n",
                         "import time\nprint('OpenAI Codex loading', flush=True)\ntime.sleep(30)\n"):
@@ -174,6 +179,7 @@ time.sleep(30)
                 self.assertTrue((directory / "failure.json").is_file())
                 self.assertFalse((directory / "metadata.json").exists())
 
+    @require(native_replay_sandbox, "replays the native CLI under the Landlock + seccomp replay sandbox")
     def test_archive_history_mutation_rejects_capture(self):
         self.fixture.write_text('''import os,sqlite3,time
 from pathlib import Path
@@ -190,6 +196,7 @@ time.sleep(30)
         self.assertIsNone(self.replay.peek(self.evidence, THREAD))
         self.assertEqual(before, self.fingerprint())
 
+    @require(native_replay_sandbox, "replays the native CLI under the Landlock + seccomp replay sandbox")
     def test_loading_composer_and_partial_history_do_not_finish_capture(self):
         self.fixture.write_text('''import time
 print("OpenAI Codex fixture: loading Resuming session…",flush=True)
@@ -207,6 +214,7 @@ time.sleep(30)
         self.assertIn("Failed robot_move_ee".encode(), result["path"].read_bytes())
         self.assertEqual(result["status"]["replay"]["display_validation"]["observed_tools"], 2)
 
+    @require(native_replay_sandbox, "replays the native CLI under the Landlock + seccomp replay sandbox")
     def test_missing_messages_tools_or_original_tool_duration_reject_publication(self):
         outputs = ["loading Resuming session…",
                    "› original archived task\n• Called robot_observe · 12ms\n• Called robot_observe · 12ms",

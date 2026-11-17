@@ -10,10 +10,12 @@ from pathlib import Path
 
 
 from ...cortex.session.codex import CodexSession, CODEX_SDK_VERSION, CODEX_CLI_VERSION
+from ...cortex.agents.base import AgentCapabilityError, read_agent_identity, session_backend_kind, session_capabilities
+from ...cortex.agents.factory import EVIDENCE_CLIENT_RELAY, backend_requirements, create_session, evidence_client
 from ...cortex.session.model_proxy import DEFAULT_MAX_RETRIES, RETRY_POLICY
 from ...core.contracts import canonical, new_id, digest, IDENTITY
 from ...core.presentation.actor_payload import ACTOR_PAYLOAD_PROFILES
-from ...runtime.harness import Harness
+from ...runtime.harness import Harness, REMINDER_IN_COMPACT_REQUEST, REMINDER_IN_TOOL_RESULT
 from ...runtime.tools.builtins import create_registry, CONFIG_TOOL_NAMES
 from ...robot.backends.factory import create_backend
 from ...core.storage.store import Store
@@ -91,6 +93,7 @@ class Workbench(WorkbenchRoutes):
         if completion_guidance is not _UNSET and completion_guidance not in COMPLETION_GUIDANCE_MODES:
             raise ValueError('invalid_completion_guidance')
         selected = (config if config is not None else Config.load()).with_overrides(cli_overrides(supplied))
+        requested_backend = selected.agent.backend
         resume, replay = selected.run.resume, selected.run.replay
         invocation_port = selected.run.port
         self.root = Path(root).resolve()
@@ -161,6 +164,9 @@ class Workbench(WorkbenchRoutes):
             raise ValueError('unknown_disabled_tools:' + ','.join(sorted(unknown_tools)))
         if not replay and "task_plan" in selected.features.disabled_tools:
             raise ValueError("required_task_plan_tool_cannot_be_disabled")
+        if not replay:
+            # Refuse a backend/feature combination before any run state, robot or native process exists.
+            backend_requirements(selected)
         self.config = selected
         run, features = selected.run, selected.features
         task, gpu, seed, layout_id, max_actions = run.task, run.gpu, run.seed, run.layout_id, run.max_actions
@@ -206,7 +212,15 @@ class Workbench(WorkbenchRoutes):
         self.identity = {key:manifest[key] for key in IDENTITY} if (resume or replay) else dict(run_id=self.root.name, episode_id=new_id("ep"), env_instance_id=new_id("env"), env_generation=1)
         self.store = Store(self.root, self.identity)
         self.identity.update(self.store.read_state("runtime", "identity", self.identity))
-        self.previous_codex = self.store.read_state("runtime", "codex") if resume else None
+        # Identity of the agent session that recorded this run (runtime/agent; runtime/codex for older archives).
+        self.previous_agent = read_agent_identity(self.store) if resume else None
+        recorded_backend = (self.previous_agent or {}).get("backend")
+        # Both the backend this invocation asked for and the archived configuration must match the recorded session.
+        if recorded_backend is not None and {requested_backend, self.config.agent.backend} != {recorded_backend}:
+            self.store.close()
+            self.run_lock.close()
+            raise ValueError(f"resume_agent_backend_changed: the run was recorded with agent backend {recorded_backend}; "
+                             f"resume with --agent-backend {recorded_backend} or start a fresh run")
         if resume:
             worker = self.store.read_state("runtime", "robot") or {}
             pid = worker.get("pid")
@@ -245,12 +259,23 @@ class Workbench(WorkbenchRoutes):
                                grasp_memory_store=self.grasp_memory_store, vision_compare=vision_compare, config=self.config,
                                task_plan_required=True, tool_specs=configured_specs)
         if resume: self.harness.accepting=True  # Fresh environment generation; old unknown receipts remain immutable.
-        self.session = CodexSession(self.root, self.store, self.harness.handle_tool, price_card=price_card,
-                                    config=self.config, task_planning=self.harness.task_planning)
+        self.session = create_session(self.config, self.root, self.store, self.harness.handle_tool,
+                                      price_card=price_card, task_planning=self.harness.task_planning)
+        codex_backend = self._backend_kind() == "codex"
+        self.harness.delivery_channel = "codex_tool" if codex_backend else "agent_tool"
+        # Codex re-injects the decision context into its own compaction request; every other backend gets it from
+        # the Harness on the next actor tool response after the session reports a context reset (design §4.5).
+        self.harness.decision_reminder_channel = (REMINDER_IN_COMPACT_REQUEST if codex_backend
+                                                  else REMINDER_IN_TOOL_RESULT)
         if not (resume or replay):
             (self.root / 'effective_config.json').write_text(json.dumps(self.config.to_dict(), indent=2) + '\n')
         self.session.on_disconnect=self.harness.request_stop
+        self.session.on_context_reset = self.harness.model_context_reset
         self.session.transport_recovery_gate = self.transport_recovery_block
+        self.session.tool_parallel_safe = self.harness.tool_registry.parallel_safe
+        # Published ToolSpec.parallel per actor tool (True | False | "request_dependent"), for MCP readOnlyHint.
+        self.session.tool_parallel_hints = {tool["name"]: tool["parallel"]
+                                            for tool in self.harness.tool_registry.manifest(self.harness)["tools"]}
         self.terminal = None
         self.status = "starting"
         self.starting = True
@@ -280,9 +305,13 @@ class Workbench(WorkbenchRoutes):
             observations=self.store.records("observation")
             self.harness.latest=observations[-1] if observations else None
             self.harness.capabilities=self.store.read_state("runtime","capabilities") or self.store.read("configuration","robot_capabilities")
-            info=self.store.read_state("runtime","codex") or {}
-            self.session.thread_id=info.get("thread_id")
-            self.session.state="replay"
+            info=read_agent_identity(self.store) or {}
+            enter_replay=getattr(self.session, "enter_replay", None)
+            if callable(enter_replay):
+                enter_replay(info.get("thread_id"))
+            else:
+                self.session.thread_id=info.get("thread_id")
+                self.session.state="replay"
             self.terminal=Terminal(self.root,self.root)
             saved_terminal=json.loads((self.root/"terminal.json").read_text()) if (self.root/"terminal.json").exists() else {}
             self.terminal.session_id=saved_terminal.get("session_id",self.terminal.session_id)
@@ -386,6 +415,11 @@ class Workbench(WorkbenchRoutes):
                 return
             if getattr(self.robot, "process", None):
                 self.store.set_state("runtime", "robot", {"pid":self.robot.process.pid,"run_dir":str(self.root/"private"/"robot")})
+            # Published Harness source for every backend (design R4.4): mounted at /harness by the sandbox, named by
+            # the instructions below otherwise. CodexSession._prepare refreshes the same copy.
+            from ...cortex.session.actor_source import snapshot_actor_source
+            (self.root / "private").mkdir(mode=0o700, exist_ok=True)
+            snapshot_actor_source(self.root / "private" / "actor-source")
             from ...cortex.context.actor_instructions import instructions as actor_instructions
             observation_contract = (DEPTH_INSTRUCTIONS if allows_depth(self.observation_profile) else
                 CALIBRATED_OBSERVATION_INSTRUCTIONS if has_calibration(self.observation_profile)
@@ -435,11 +469,15 @@ class Workbench(WorkbenchRoutes):
                 + "\n" + geometry_guidance
                 + "Calibration, when available, is anchored to its observation, not a substitute for current measured motion. robot_information can repeat these inputs, calibration rereads the latest published camera/base calibration, and section=all returns the detailed physical reference. "
                   "geometry_image is an optional illustrative drawing, not live visual evidence.")
-            if self.resume and self.previous_codex:
-                self.harness.thread_id = await asyncio.to_thread(self.session.start, self.actor_tools(), instructions, self.previous_codex["thread_id"])
+            # A recorded identity without a thread (empty native record) starts a fresh thread, as before.
+            if self.resume and (self.previous_agent or {}).get("thread_id"):
+                self.harness.thread_id = await asyncio.to_thread(self.session.start, self.actor_tools(), instructions, self.previous_agent["thread_id"])
             else:
                 self.harness.thread_id = await asyncio.to_thread(self.session.start, self.actor_tools(), instructions)
             self.harness.model_proxy = getattr(self.session, "model_proxy", None)
+            # Forced full delivery (design §4.3) for a backend that cannot yet prove what its model still holds;
+            # read after start() so a session may settle its delivery mode while starting. Codex: "delta".
+            self.harness.context_epoch_volatile = getattr(self.session, "context_delivery", "delta") == "full"
             if isinstance(self.harness, Harness):
                 # The capabilities already delivered in startup belong to the
                 # newly created model context, not the pre-start empty identity.
@@ -449,13 +487,18 @@ class Workbench(WorkbenchRoutes):
                 return
             if self.visual_review_model:
                 from ...cortex.session.visual_review import VisualReviewer
-                from ...cortex.session.codex_evidence_agent import CodexEvidenceAgent
-                self.harness.visual_reviewer = VisualReviewer(CodexEvidenceAgent(self.session))
+                options = {}
+                if self._evidence_client() == EVIDENCE_CLIENT_RELAY:
+                    # agent.evidence.upstream (when set) becomes the relay's "evidence" binding (design §9.4).
+                    from ...cortex.agents.evidence import bind_evidence_upstream
+                    upstream = bind_evidence_upstream(self.session, self.config)
+                    if upstream != "actor":
+                        options["upstream"] = upstream
+                self.harness.visual_reviewer = VisualReviewer(self._evidence_agent(**options))
             if self_briefing_at is not None:
                 # features.self_briefing: one fresh helper turn of the actor model before the first actor turn.
                 from ...cortex.context import self_briefing as briefing
-                from ...cortex.session.codex_evidence_agent import CodexEvidenceAgent
-                agent = CodexEvidenceAgent(self.session, model=self.session.model,
+                agent = self._evidence_agent(model=self.session.model,
                     base_instructions=briefing.BASE_INSTRUCTIONS,
                     developer_instructions=briefing.DEVELOPER_INSTRUCTIONS, source=briefing.SOURCE)
                 record = await asyncio.to_thread(briefing.generate, agent, self.store,
@@ -472,16 +515,15 @@ class Workbench(WorkbenchRoutes):
                 await asyncio.to_thread(self.session.run_turn, prompt)
             if not self.harness.accepting and not getattr(self.harness, "episode_terminal", None):
                 return
-            if getattr(self, 'config', Config()).features.terminal:
-                self.terminal = Terminal(self.root, self.session.actor_dir,
-                    command_prefix=self.session.command_prefix + [str(self.session.cli_executable),
-                        '-c', 'model=' + json.dumps(self.session.model),
-                        '-c', 'model_reasoning_effort=' + json.dumps(self.session.effort)],
-                    env=self.session.env)
-                await self.terminal.start(f"unix://{self.session.socket_path}", self.session.thread_id)
+            attach = self._terminal_attach_spec() if getattr(self, 'config', Config()).features.terminal else None
+            if attach is not None:
+                self.terminal = Terminal(self.root, attach["cwd"], command_prefix=attach["command_prefix"],
+                                         env=attach["env"])
+                await self.terminal.start(attach["attach_uri"], attach["thread_id"])
             if not self.harness.accepting and not getattr(self.harness, "episode_terminal", None):
                 return
             self.status = "running"
+            codex_backend = self._backend_kind() == "codex"
             manifest = dict(schema_version="0.1", **self.identity, data_origin="robodojo_runtime",
                             actor_information_policy=actor_policy(self.observation_profile),
                             motion_review=self.motion_review, vision_compare=self.vision_compare,
@@ -490,8 +532,9 @@ class Workbench(WorkbenchRoutes):
                             grasp_memory_dir=str(self.grasp_memory_store.root) if self.grasp_memory_store else None,
                             observation_profile=(getattr(self.harness,"latest",None) or {}).get("observation_profile", "synthetic_fixture"), clock_policy="paused_between_gateway_operations",
                             model=self.session.model, provider=self.session.provider, effort=self.session.effort,
-                            price_card=self.session.price_card, codex_sdk=CODEX_SDK_VERSION,
-                            codex_cli=CODEX_CLI_VERSION, codex_cli_executable=str(self.session.cli_executable),
+                            price_card=self.session.price_card, codex_sdk=CODEX_SDK_VERSION if codex_backend else None,
+                            codex_cli=CODEX_CLI_VERSION if codex_backend else None,
+                            codex_cli_executable=str(self.session.cli_executable) if codex_backend else None,
                             capabilities=self.harness.capabilities,
                             image_settings=self.store.read_state("runtime", "image_settings"),
                             model_image_policy=self.store.read_state("runtime", "model_image_policy"),
@@ -526,12 +569,22 @@ class Workbench(WorkbenchRoutes):
                             handoff_policy=handoff,
                             public_task_rules=rules,
                             task_instruction_override=instruction_override,
-                            thread_id=self.session.thread_id, app_server_pid=self.session.process.pid,
+                            thread_id=self.session.thread_id,
+                            app_server_pid=self.session.process.pid if codex_backend else None,
                             terminal_session_id=self.terminal.session_id if self.terminal else None,
                             terminal_pid=self.terminal.process.pid if self.terminal else None,
                             effective_config=getattr(self, "config", Config()).to_dict(),
                             tool_catalog=self.harness.tool_registry.manifest(self.harness),
                             local_scene=self.harness.scene.capabilities())
+            if not codex_backend:
+                # Codex-only provenance keys are absent for other backends; agent_backend carries theirs.
+                for key in ("codex_sdk", "codex_cli", "codex_cli_executable", "app_server_pid"):
+                    manifest.pop(key)
+            manifest["agent_backend"] = self._agent_provenance()
+            if self.visual_review_model or (benchmark and self.config.features.self_briefing):
+                # Effective evidence helper client (design §9.6); absent without an evidence feature, so
+                # default Codex manifests keep their key set.
+                manifest["evidence_client"] = self._evidence_client()
             if self.self_briefing is not None:
                 manifest["self_briefing"] = self.self_briefing
             self.store.set_state("runtime", "identity", dict(self.identity))
@@ -554,6 +607,53 @@ class Workbench(WorkbenchRoutes):
                     self.store.event("run." + self.status, {"reason": "stop_during_startup"})
             finally:
                 self.starting = False
+
+    # ---- agent session protocol, read tolerantly -------------------------------------------------------------
+    # Sessions implement auriga.cortex.agents.base.AgentSession. Duck-typed, Codex-shaped sessions (test fakes,
+    # pre-protocol objects) lack the protocol members; they are served by the Codex implementation of the member,
+    # i.e. exactly the attribute probing the gateway used before the protocol existed.
+
+    def _backend_kind(self):
+        """The session's backend kind; duck-typed sessions without ``backend_kind`` are Codex-shaped."""
+        return session_backend_kind(self.session)
+
+    def _session_capability(self, name):
+        """``session.capabilities.<name>``; duck-typed sessions without capabilities get the Codex value."""
+        return bool(getattr(session_capabilities(self.session, CodexSession.capabilities), name, False))
+
+    def _terminal_attach_spec(self):
+        """Live native TUI attachment, or None when the backend has no terminal (skipped, not an error)."""
+        if not self._session_capability("terminal_attach"):
+            return None
+        spec = getattr(self.session, "terminal_attach_spec", None)
+        return spec() if callable(spec) else CodexSession.terminal_attach_spec(self.session)
+
+    def _owned_session_processes(self):
+        owned = getattr(self.session, "owned_processes", None)
+        return list(owned()) if callable(owned) else CodexSession.owned_processes(self.session)
+
+    def _evidence_client(self):
+        """Effective evidence helper client of this run: "codex_agent" (Codex default) or "relay"."""
+        return evidence_client(self.config, self._backend_kind())
+
+    def _evidence_agent(self, **options):
+        """Evidence helper for visual review / self-briefing from ``session.evidence_agent(**options)``.
+
+        Codex: ``CodexEvidenceAgent`` unless ``agent.evidence.client="relay"``; other backends: ``RelayEvidenceClient``.
+        Duck-typed, Codex-shaped sessions without the protocol member get the Codex selection for this run's config.
+        """
+        factory = getattr(self.session, "evidence_agent", None)
+        if callable(factory):
+            return factory(**options)
+        if self._evidence_client() == EVIDENCE_CLIENT_RELAY:
+            from ...cortex.agents.evidence import RelayEvidenceClient
+            return RelayEvidenceClient(self.session, **options)
+        from ...cortex.session.codex_evidence_agent import CodexEvidenceAgent
+        return CodexEvidenceAgent(self.session, **options)
+
+    def _agent_provenance(self):
+        provenance = getattr(self.session, "provenance", None)
+        return provenance() if callable(provenance) else CodexSession.provenance(self.session)
 
     def actor_tools(self):
         if hasattr(self, 'harness'):
@@ -598,7 +698,8 @@ class Workbench(WorkbenchRoutes):
     def snapshot(self):
         if self.controller and self.controller["expires_at"] < time.time(): self.controller=None
         return dict(**self.identity, status=self.status, thread_id=self.session.thread_id, turn_id=self.session.turn_id,
-                    codex_status=self.session.state, action_count=self.harness.action_count, accepting_actions=self.harness.accepting,
+                    codex_status=self.session.state, agent_backend=self._backend_kind(), agent_status=self.session.state,
+                    action_count=self.harness.action_count, accepting_actions=self.harness.accepting,
                     active_action=self.harness.active_action, motion_status=self.harness.states.get(self.harness.active_action,{}).get("status","idle"),
                     controller={"owner_client_id":self.controller["client_id"] if self.controller else None,"expires_at":self.controller["expires_at"] if self.controller else None,"can_claim":self.controller is None},
                     pending_requests=[r for r in self.store.states("native_request") if r["status"]=="pending"],
@@ -650,6 +751,14 @@ class Workbench(WorkbenchRoutes):
             if self.scene_service: self.scene_service.closing=False
             self.status="running" if self.harness.accepting else "stopped"
             return {"request_id":identifier,"status":"reset","observation_id":observation["observation_id"],**self.identity}
+        if command=="steer":
+            # Mid-turn operator input: joins the running turn; stop/hold remain the way to halt motion.
+            text=value.get("prompt")
+            if not isinstance(text,str) or not text.strip() or len(text)>16000: raise ValueError("invalid_task_prompt")
+            if not self._session_capability("steer"): raise AgentCapabilityError("steer_unsupported_by_backend")
+            if self.starting or self.session.state!="running": raise ValueError("no_active_turn_to_steer")
+            turn_id=await asyncio.to_thread(self.session.steer,text)
+            return dict(request_id=identifier,thread_id=self.session.thread_id,turn_id=turn_id,status="steered")
         if command=="prompt":
             if self.starting or not self.harness.accepting or self.session.state=="running" or self.harness.active_action: raise ValueError("run_not_ready_for_new_task")
             prompt=value.get("prompt")
@@ -701,10 +810,8 @@ class Workbench(WorkbenchRoutes):
         """Unblock the original startup owner without leaving late-created children."""
         signalled = {}
         while not starting.done():
-            client = getattr(self.session, "client", None)
             processes = (("robot", getattr(self.robot, "process", None)),
-                         ("codex_bridge", getattr(client, "_proc", None)),
-                         ("codex", getattr(self.session, "process", None)),
+                         *Workbench._owned_session_processes(self),
                          ("terminal", getattr(self.terminal, "process", None)))
             for role, process in processes:
                 if process is None or process.poll() is not None:

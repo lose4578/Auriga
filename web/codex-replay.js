@@ -13,7 +13,7 @@ function details(title, value, open = false) {
   element.append(node('summary', title), node('pre', typeof value === 'string' ? value : JSON.stringify(value, null, 2)));
   return element;
 }
-export function createCodexReplay({ resizeTerminal }) {
+export function createCodexReplay({ resizeTerminal, agentName = () => 'Codex' }) {
   const $ = (id) => document.getElementById(id), content = $('codex-replay-content');
   let readError;
   let signature, selectedPhase, position = { index: -1, total: 0 }, nativeCount = 0;
@@ -29,7 +29,7 @@ export function createCodexReplay({ resizeTerminal }) {
     if (!item) return;
     const article = node('article', undefined, `codex-record ${item.type === 'reasoning' ? 'codex-reasoning' : ''}`);
     article.dataset.itemId = item.id || '';
-    const title = label || ({ userMessage: '用户指令', agentMessage: 'Codex 说明', reasoning: '已保存的思考摘要' }[item.type]) || item.tool || item.command || item.type;
+    const title = label || ({ userMessage: '用户指令', agentMessage: `${agentName()} 说明`, reasoning: '已保存的思考摘要' }[item.type]) || item.tool || item.command || item.type;
     article.append(node('h3', title));
     const text = savedText(item);
     if (text) article.append(node('pre', text, 'codex-message'));
@@ -45,14 +45,14 @@ export function createCodexReplay({ resizeTerminal }) {
       if (item[key] !== undefined && item[key] !== null) article.append(details(title, item[key]));
     }
     if (item.status || typeof item.success === 'boolean') article.append(node('p', `工具记录状态：${item.status || '未提供'}${typeof item.success === 'boolean' ? ` · 工具调用 ${item.success ? '成功' : '失败'}` : ''}`, 'codex-record-note'));
-    article.append(details('原始 Codex 记录', item)); parent.append(article);
+    article.append(details(`原始 ${agentName()} 记录`, item)); parent.append(article);
   }
   function render() {
     const phase = selectedPhase;
-    const nextSignature = JSON.stringify([phase?.id, phase?.items, phase?.before, phase?.after, phase?.prompt, phase?.actions, position, nativeCount, readError]);
+    const nextSignature = JSON.stringify([phase?.id, phase?.items, phase?.before, phase?.after, phase?.prompt, phase?.actions, position, nativeCount, readError, agentName()]);
     if (signature === nextSignature) return; const changed = content.dataset.phaseId !== phase?.id; signature = nextSignature;
     content.replaceChildren(); content.dataset.phaseId = phase?.id || '';
-    $('codex-replay-status').textContent = readError ? `Codex 记录读取失败 · ${readError}` : phase ? `阶段 ${position.index + 1} / ${position.total} · ${phase.title}` : nativeCount ? '正在按工具和动作整理阶段' : '等待已保存的 Codex 记录';
+    $('codex-replay-status').textContent = readError ? `${agentName()} 记录读取失败 · ${readError}` : phase ? `阶段 ${position.index + 1} / ${position.total} · ${phase.title}` : nativeCount ? '正在按工具和动作整理阶段' : `等待已保存的 ${agentName()} 记录`;
     if (!phase) { content.append(node('p', '尚无可显示的阶段记录。', 'codex-record-note')); return; }
     if (phase.prompt) content.append(details('本轮用户指令', savedText(phase.prompt) || phase.prompt));
     const appendGroup = (title, items) => {
@@ -62,7 +62,7 @@ export function createCodexReplay({ resizeTerminal }) {
     };
     appendGroup('执行前', phase.before);
     appendGroup('当前阶段', phase.items);
-    if (!phase.items?.length) content.append(node('p', '此阶段为 Harness 动作，没有关联的 Codex 消息。', 'codex-record-note'));
+    if (!phase.items?.length) content.append(node('p', `此阶段为 Harness 动作，没有关联的 ${agentName()} 消息。`, 'codex-record-note'));
     for (const entry of phase.actions || []) {
       const receipt = entry.action?.receipt;
       if (receipt) content.append(details(`机器人动作回执 · ${receipt.status || '未知'}`, { action_id: entry.action_id, ...receipt }));

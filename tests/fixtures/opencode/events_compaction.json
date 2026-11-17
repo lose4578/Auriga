@@ -1,0 +1,361 @@
+{
+ "capture": "spike S9 /event frames of the auto-compaction in turn 3 (compaction trigger message, summary message, synthetic continue message, session.compacted), anthropic_messages wire, opencode 1.19.5",
+ "sanitised": [
+  "run paths -> /runs/<scenario>",
+  "loopback ports -> 127.0.0.1:0",
+  "image data URLs -> 1-pixel placeholder",
+  "response date/server headers dropped",
+  "3 KiB filler tool outputs trimmed",
+  "bash `env` output replaced by a neutral line"
+ ],
+ "evidence": [
+  "scratch/s-c/evidence/s9-anthropic-compact/events.json"
+ ],
+ "sessions": {
+  "compaction_window": {
+   "session_id": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+   "message_ids": [
+    "msg_1c6efaec3001xeZzkHOaFd5LlQ",
+    "msg_1c6efaec60019Oh74QEU3am6Fo",
+    "msg_1c6efaeca001YBeMYDlxS5Tu78"
+   ],
+   "events": [
+    {
+     "id": "evt_1c6efaec4001GVBMiZXrPsrvIE",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+      "info": {
+       "id": "msg_1c6efaec3001xeZzkHOaFd5LlQ",
+       "role": "user",
+       "model": {
+        "providerID": "relay",
+        "modelID": "claude-sonnet-4-5"
+       },
+       "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+       "agent": "build",
+       "time": {
+        "created": 1794338959044
+       }
+      }
+     }
+    },
+    {
+     "id": "evt_1c6efaec400246FYqFtaoKbpRF",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+      "part": {
+       "id": "prt_1c6efaec4001e4rsaGvmojFfOM",
+       "messageID": "msg_1c6efaec3001xeZzkHOaFd5LlQ",
+       "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+       "type": "compaction",
+       "auto": true,
+       "overflow": false
+      },
+      "time": 1794338959044
+     }
+    },
+    {
+     "id": "evt_1c6efaec6001d8DPE2NNXuU8H7",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+      "info": {
+       "id": "msg_1c6efaec60019Oh74QEU3am6Fo",
+       "role": "assistant",
+       "parentID": "msg_1c6efaec3001xeZzkHOaFd5LlQ",
+       "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+       "mode": "compaction",
+       "agent": "compaction",
+       "summary": true,
+       "path": {
+        "cwd": "/runs/s9-anthropic-compact/actor",
+        "root": "/"
+       },
+       "cost": 0,
+       "tokens": {
+        "output": 0,
+        "input": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "modelID": "claude-sonnet-4-5",
+       "providerID": "relay",
+       "time": {
+        "created": 1794338959046
+       }
+      }
+     }
+    },
+    {
+     "id": "evt_1c6efaec8003PzbmgtLZVGa8GH",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+      "part": {
+       "id": "prt_1c6efaec8001zU5qucZ1fJrBhr",
+       "messageID": "msg_1c6efaec60019Oh74QEU3am6Fo",
+       "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+       "type": "step-start"
+      },
+      "time": 1794338959048
+     }
+    },
+    {
+     "id": "evt_1c6efaec9001kiJIoc6kcP49uH",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+      "part": {
+       "id": "prt_1c6efaec8002s57KohhbhumuBo",
+       "messageID": "msg_1c6efaec60019Oh74QEU3am6Fo",
+       "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+       "type": "text",
+       "text": "",
+       "time": {
+        "start": 1794338959048
+       }
+      },
+      "time": 1794338959049
+     }
+    },
+    {
+     "id": "evt_1c6efaec9002nNUgSVS1qilv6c",
+     "type": "message.part.delta",
+     "properties": {
+      "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+      "messageID": "msg_1c6efaec60019Oh74QEU3am6Fo",
+      "partID": "prt_1c6efaec8002s57KohhbhumuBo",
+      "field": "text",
+      "delta": "SUMMARY: the rob"
+     }
+    },
+    {
+     "id": "evt_1c6efaec9003rNlZEcXXkT7eiF",
+     "type": "message.part.delta",
+     "properties": {
+      "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+      "messageID": "msg_1c6efaec60019Oh74QEU3am6Fo",
+      "partID": "prt_1c6efaec8002s57KohhbhumuBo",
+      "field": "text",
+      "delta": "ot did several s"
+     }
+    },
+    {
+     "id": "evt_1c6efaec9004mQDxF34HK8lD9R",
+     "type": "message.part.delta",
+     "properties": {
+      "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+      "messageID": "msg_1c6efaec60019Oh74QEU3am6Fo",
+      "partID": "prt_1c6efaec8002s57KohhbhumuBo",
+      "field": "text",
+      "delta": "teps; continue w"
+     }
+    },
+    {
+     "id": "evt_1c6efaec9005VqjsReRUyOVqf9",
+     "type": "message.part.delta",
+     "properties": {
+      "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+      "messageID": "msg_1c6efaec60019Oh74QEU3am6Fo",
+      "partID": "prt_1c6efaec8002s57KohhbhumuBo",
+      "field": "text",
+      "delta": "ith the task."
+     }
+    },
+    {
+     "id": "evt_1c6efaec9006vt66itbhSajMyR",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+      "part": {
+       "id": "prt_1c6efaec8002s57KohhbhumuBo",
+       "messageID": "msg_1c6efaec60019Oh74QEU3am6Fo",
+       "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+       "type": "text",
+       "text": "SUMMARY: the robot did several steps; continue with the task.",
+       "time": {
+        "start": 1794338959048,
+        "end": 1794338959049
+       }
+      },
+      "time": 1794338959049
+     }
+    },
+    {
+     "id": "evt_1c6efaec9007ypOS2p8u0ZEti0",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+      "part": {
+       "id": "prt_1c6efaec9001yI4wXhOkpowGt5",
+       "reason": "stop",
+       "messageID": "msg_1c6efaec60019Oh74QEU3am6Fo",
+       "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+       "type": "step-finish",
+       "tokens": {
+        "total": 4437,
+        "input": 4417,
+        "output": 20,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "cost": 0
+      },
+      "time": 1794338959049
+     }
+    },
+    {
+     "id": "evt_1c6efaeca0012vJbNUv6270cBt",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+      "info": {
+       "id": "msg_1c6efaec60019Oh74QEU3am6Fo",
+       "role": "assistant",
+       "parentID": "msg_1c6efaec3001xeZzkHOaFd5LlQ",
+       "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+       "mode": "compaction",
+       "agent": "compaction",
+       "summary": true,
+       "path": {
+        "cwd": "/runs/s9-anthropic-compact/actor",
+        "root": "/"
+       },
+       "cost": 0,
+       "tokens": {
+        "total": 4437,
+        "input": 4417,
+        "output": 20,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "modelID": "claude-sonnet-4-5",
+       "providerID": "relay",
+       "time": {
+        "created": 1794338959046,
+        "completed": 1794338959050
+       },
+       "finish": "stop"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6efaeca002lyx1drdHx93q0P",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+      "info": {
+       "id": "msg_1c6efaec60019Oh74QEU3am6Fo",
+       "role": "assistant",
+       "parentID": "msg_1c6efaec3001xeZzkHOaFd5LlQ",
+       "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+       "mode": "compaction",
+       "agent": "compaction",
+       "summary": true,
+       "path": {
+        "cwd": "/runs/s9-anthropic-compact/actor",
+        "root": "/"
+       },
+       "cost": 0,
+       "tokens": {
+        "total": 4437,
+        "input": 4417,
+        "output": 20,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "modelID": "claude-sonnet-4-5",
+       "providerID": "relay",
+       "time": {
+        "created": 1794338959046,
+        "completed": 1794338959050
+       },
+       "finish": "stop"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6efaeca003XBxxBEGguuXCm9",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+      "part": {
+       "type": "compaction",
+       "auto": true,
+       "overflow": false,
+       "id": "prt_1c6efaec4001e4rsaGvmojFfOM",
+       "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+       "messageID": "msg_1c6efaec3001xeZzkHOaFd5LlQ",
+       "tail_start_id": "msg_1c6efabb5001kKPwSnTfc6sq3j"
+      },
+      "time": 1794338959050
+     }
+    },
+    {
+     "id": "evt_1c6efaeca004N3Vv4NtpdBATy3",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+      "info": {
+       "id": "msg_1c6efaeca001YBeMYDlxS5Tu78",
+       "role": "user",
+       "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+       "time": {
+        "created": 1794338959050
+       },
+       "agent": "build",
+       "model": {
+        "providerID": "relay",
+        "modelID": "claude-sonnet-4-5"
+       }
+      }
+     }
+    },
+    {
+     "id": "evt_1c6efaecb001Qrsn92sqHx4jl4",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+      "part": {
+       "id": "prt_1c6efaecb001eyt2Ac3xwwW33U",
+       "messageID": "msg_1c6efaeca001YBeMYDlxS5Tu78",
+       "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK",
+       "type": "text",
+       "metadata": {
+        "compaction_continue": true
+       },
+       "synthetic": true,
+       "text": "Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.",
+       "time": {
+        "start": 1794338959051,
+        "end": 1794338959051
+       }
+      },
+      "time": 1794338959051
+     }
+    },
+    {
+     "id": "evt_1c6efaecb002lqSXXYA7HG9eJ3",
+     "type": "session.compacted",
+     "properties": {
+      "sessionID": "ses_e39105b66ffeLHSb0yfo3kx5gK"
+     }
+    }
+   ]
+  }
+ }
+}

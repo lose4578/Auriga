@@ -1,0 +1,634 @@
+{
+ "capture": "spike S6 retries/failure forms, opencode 1.19.5; GET /session/{id}/message shape, read from the run's opencode.db after the spike ended (rows hydrated like MessageV2.hydrate); every session was idle at capture (status_after)",
+ "sanitised": [
+  "run paths -> /runs/<scenario>",
+  "loopback ports -> 127.0.0.1:0",
+  "image data URLs -> 1-pixel placeholder",
+  "response date/server headers dropped",
+  "3 KiB filler tool outputs trimmed",
+  "bash `env` output replaced by a neutral line"
+ ],
+ "evidence": [
+  "scratch/s-c/evidence/s6-retry-anthropic-all",
+  "scratch/s-c/evidence/s6-retry-anthropic-b",
+  "scratch/s-c/evidence/s6-retry-responses-b"
+ ],
+ "sessions": {
+  "deny400": {
+   "wire": "anthropic_messages",
+   "session_id": "ses_e391772b1ffeVRObMtO8zhF0dr",
+   "status_after": {},
+   "messages": [
+    {
+     "info": {
+      "role": "user",
+      "time": {
+       "created": 1794338491742
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "relay",
+       "modelID": "claude-sonnet-4-5"
+      },
+      "id": "msg_1c6e88d5e001ptfvxozcnhCo8i",
+      "sessionID": "ses_e391772b1ffeVRObMtO8zhF0dr"
+     },
+     "parts": [
+      {
+       "type": "text",
+       "text": "scenario deny400",
+       "id": "prt_1c6e88d60001YoC63lqO0xaw3G",
+       "sessionID": "ses_e391772b1ffeVRObMtO8zhF0dr",
+       "messageID": "msg_1c6e88d5e001ptfvxozcnhCo8i"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6e88d5e001ptfvxozcnhCo8i",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s6retry-anthropic-all/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794338492299,
+       "completed": 1794338493547
+      },
+      "error": {
+       "name": "APIError",
+       "data": {
+        "message": "auriga relay denied this request",
+        "statusCode": 400,
+        "isRetryable": false,
+        "responseHeaders": {
+         "content-length": "108",
+         "content-type": "application/json",
+         "x-should-retry": "false"
+        },
+        "responseBody": "{\"type\": \"error\", \"error\": {\"type\": \"invalid_request_error\", \"message\": \"auriga relay denied this request\"}}",
+        "metadata": {
+         "url": "http://127.0.0.1:0/v1/messages"
+        }
+       }
+      },
+      "id": "msg_1c6e88f8b001CpvR4wSmgA6Z6n",
+      "sessionID": "ses_e391772b1ffeVRObMtO8zhF0dr"
+     },
+     "parts": []
+    }
+   ]
+  },
+  "e500_retried": {
+   "wire": "anthropic_messages",
+   "session_id": "ses_e391429b5ffe06UiaaulMOLWQ1",
+   "status_after": {},
+   "messages": [
+    {
+     "info": {
+      "role": "user",
+      "time": {
+       "created": 1794338707021
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "relay",
+       "modelID": "claude-sonnet-4-5"
+      },
+      "id": "msg_1c6ebd64d001JOp7atNN2r016f",
+      "sessionID": "ses_e391429b5ffe06UiaaulMOLWQ1"
+     },
+     "parts": [
+      {
+       "type": "text",
+       "text": "scenario e500",
+       "id": "prt_1c6ebd64e001SuUbTB55a4Z4Fl",
+       "sessionID": "ses_e391429b5ffe06UiaaulMOLWQ1",
+       "messageID": "msg_1c6ebd64d001JOp7atNN2r016f"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6ebd64d001JOp7atNN2r016f",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s6retry-anthropic-all/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794338707025,
+       "completed": 1794338707558
+      },
+      "error": {
+       "name": "APIError",
+       "data": {
+        "message": "provider internal problem",
+        "statusCode": 500,
+        "isRetryable": true,
+        "responseHeaders": {
+         "content-length": "89",
+         "content-type": "application/json",
+         "retry-after-ms": "100"
+        },
+        "responseBody": "{\"type\": \"error\", \"error\": {\"type\": \"api_error\", \"message\": \"provider internal problem\"}}",
+        "metadata": {
+         "url": "http://127.0.0.1:0/v1/messages"
+        }
+       }
+      },
+      "id": "msg_1c6ebd651001sOWHh3TpEUvbIr",
+      "sessionID": "ses_e391429b5ffe06UiaaulMOLWQ1"
+     },
+     "parts": []
+    }
+   ]
+  },
+  "stream_error": {
+   "wire": "anthropic_messages",
+   "session_id": "ses_e391365eaffeI8aboyLfuky2xc",
+   "status_after": {},
+   "messages": [
+    {
+     "info": {
+      "role": "user",
+      "time": {
+       "created": 1794338757176
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "relay",
+       "modelID": "claude-sonnet-4-5"
+      },
+      "id": "msg_1c6ec9a38001FdL5CagIS7rVF5",
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc"
+     },
+     "parts": [
+      {
+       "type": "text",
+       "text": "scenario stream_error",
+       "id": "prt_1c6ec9a3c0012cymMehdLjjWHo",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "messageID": "msg_1c6ec9a38001FdL5CagIS7rVF5"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6ec9a38001FdL5CagIS7rVF5",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s6retry-anthropic-b/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794338757724,
+       "completed": 1794338825411
+      },
+      "error": {
+       "name": "UnknownError",
+       "data": {
+        "message": "{\"type\":\"overloaded_error\",\"message\":\"mid stream failure\"}"
+       }
+      },
+      "id": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ",
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6eca1a7001j98800mIuOQQjz",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ"
+      },
+      {
+       "type": "text",
+       "text": "",
+       "time": {
+        "start": 1794338759081
+       },
+       "id": "prt_1c6eca1a9001FwUqFjbj54edaj",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ"
+      },
+      {
+       "type": "step-start",
+       "id": "prt_1c6ecab08001tU30oItZFvzegZ",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ"
+      },
+      {
+       "type": "text",
+       "text": "",
+       "time": {
+        "start": 1794338761481
+       },
+       "id": "prt_1c6ecab090016xx1fy8pPMeUV0",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ"
+      },
+      {
+       "type": "step-start",
+       "id": "prt_1c6ecbb220015vQrcJKjg9HViI",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ"
+      },
+      {
+       "type": "text",
+       "text": "",
+       "time": {
+        "start": 1794338765605
+       },
+       "id": "prt_1c6ecbb25001UrVWBrO77gdqZC",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ"
+      },
+      {
+       "type": "step-start",
+       "id": "prt_1c6ece166001oR2p7oJmfmT3xE",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ"
+      },
+      {
+       "type": "text",
+       "text": "",
+       "time": {
+        "start": 1794338775400
+       },
+       "id": "prt_1c6ece168001GWtRLeGDa1klbz",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ"
+      },
+      {
+       "type": "step-start",
+       "id": "prt_1c6ed2f82001ZnmBb58REsxnzn",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ"
+      },
+      {
+       "type": "text",
+       "text": "",
+       "time": {
+        "start": 1794338795398
+       },
+       "id": "prt_1c6ed2f860014kal3LVnUfdWEd",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ"
+      },
+      {
+       "type": "step-start",
+       "id": "prt_1c6eda4bf001USRL93oKX74vFh",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ"
+      },
+      {
+       "type": "text",
+       "text": "",
+       "time": {
+        "start": 1794338825409,
+        "end": 1794338825411
+       },
+       "id": "prt_1c6eda4c1001omSqXXdN0GKmqc",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ"
+      }
+     ]
+    }
+   ]
+  },
+  "truncated_runaway_aborted": {
+   "wire": "anthropic_messages",
+   "trimmed": "44 identical middle attempts removed",
+   "session_id": "ses_e391259ecffe30HPNs554d48H7",
+   "status_after": {},
+   "messages": [
+    {
+     "info": {
+      "role": "user",
+      "time": {
+       "created": 1794338825752
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "relay",
+       "modelID": "claude-sonnet-4-5"
+      },
+      "id": "msg_1c6eda618001kOtQ1Y5wxX5HP3",
+      "sessionID": "ses_e391259ecffe30HPNs554d48H7"
+     },
+     "parts": [
+      {
+       "type": "text",
+       "text": "scenario truncated",
+       "id": "prt_1c6eda61a001UPpfzBUwCRnJRa",
+       "sessionID": "ses_e391259ecffe30HPNs554d48H7",
+       "messageID": "msg_1c6eda618001kOtQ1Y5wxX5HP3"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6eda618001kOtQ1Y5wxX5HP3",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s6retry-anthropic-b/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "write": 0,
+        "read": 0
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794338825758,
+       "completed": 1794338825776
+      },
+      "finish": "unknown",
+      "id": "msg_1c6eda61e001gExIpt8gfkb21x",
+      "sessionID": "ses_e391259ecffe30HPNs554d48H7"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6eda629001Q9tnjRRrYsj32n",
+       "sessionID": "ses_e391259ecffe30HPNs554d48H7",
+       "messageID": "msg_1c6eda61e001gExIpt8gfkb21x"
+      },
+      {
+       "type": "text",
+       "text": "RECOVERED",
+       "time": {
+        "start": 1794338825771,
+        "end": 1794338825773
+       },
+       "id": "prt_1c6eda62b001BHzda5fdzdbtwk",
+       "sessionID": "ses_e391259ecffe30HPNs554d48H7",
+       "messageID": "msg_1c6eda61e001gExIpt8gfkb21x"
+      },
+      {
+       "reason": "unknown",
+       "type": "step-finish",
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6eda62f001izZ10CzlLo6zRv",
+       "sessionID": "ses_e391259ecffe30HPNs554d48H7",
+       "messageID": "msg_1c6eda61e001gExIpt8gfkb21x"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6eda618001kOtQ1Y5wxX5HP3",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s6retry-anthropic-b/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "write": 0,
+        "read": 0
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794338825780,
+       "completed": 1794338825799
+      },
+      "finish": "unknown",
+      "id": "msg_1c6eda634001yoVqnJRqOL0uur",
+      "sessionID": "ses_e391259ecffe30HPNs554d48H7"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6eda6440016duf4J2e34rCJm",
+       "sessionID": "ses_e391259ecffe30HPNs554d48H7",
+       "messageID": "msg_1c6eda634001yoVqnJRqOL0uur"
+      },
+      {
+       "type": "text",
+       "text": "RECOVERED",
+       "time": {
+        "start": 1794338825796,
+        "end": 1794338825797
+       },
+       "id": "prt_1c6eda644002Dy7d35deZOWtuG",
+       "sessionID": "ses_e391259ecffe30HPNs554d48H7",
+       "messageID": "msg_1c6eda634001yoVqnJRqOL0uur"
+      },
+      {
+       "reason": "unknown",
+       "type": "step-finish",
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6eda646001eTw76KdvvORVpb",
+       "sessionID": "ses_e391259ecffe30HPNs554d48H7",
+       "messageID": "msg_1c6eda634001yoVqnJRqOL0uur"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6eda618001kOtQ1Y5wxX5HP3",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s6retry-anthropic-b/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794338826267,
+       "completed": 1794338826273
+      },
+      "error": {
+       "name": "MessageAbortedError",
+       "data": {
+        "message": "Aborted"
+       }
+      },
+      "id": "msg_1c6eda81b001SNvWQzYS9JjRq2",
+      "sessionID": "ses_e391259ecffe30HPNs554d48H7"
+     },
+     "parts": []
+    }
+   ]
+  },
+  "responses_incomplete_empty": {
+   "wire": "openai_responses",
+   "session_id": "ses_e3912425cffeikJ7gNhWDwR539",
+   "status_after": {},
+   "messages": [
+    {
+     "info": {
+      "role": "user",
+      "time": {
+       "created": 1794338831788
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "relay",
+       "modelID": "gpt-6-astra"
+      },
+      "id": "msg_1c6edbdac001RUNksjfK11Vck6",
+      "sessionID": "ses_e3912425cffeikJ7gNhWDwR539"
+     },
+     "parts": [
+      {
+       "type": "text",
+       "text": "scenario resp_incomplete_empty",
+       "id": "prt_1c6edbdae001wFKvk3MTlgsjIP",
+       "sessionID": "ses_e3912425cffeikJ7gNhWDwR539",
+       "messageID": "msg_1c6edbdac001RUNksjfK11Vck6"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6edbdac001RUNksjfK11Vck6",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s6retry-responses-b/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 15,
+       "input": 10,
+       "output": 5,
+       "reasoning": 0,
+       "cache": {
+        "write": 0,
+        "read": 0
+       }
+      },
+      "modelID": "gpt-6-astra",
+      "providerID": "relay",
+      "time": {
+       "created": 1794338831793,
+       "completed": 1794338831805
+      },
+      "finish": "length",
+      "id": "msg_1c6edbdb1001cM6bBNdY2Fs8ex",
+      "sessionID": "ses_e3912425cffeikJ7gNhWDwR539"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6edbdb9001ZokvT1NCmLIokt",
+       "sessionID": "ses_e3912425cffeikJ7gNhWDwR539",
+       "messageID": "msg_1c6edbdb1001cM6bBNdY2Fs8ex"
+      },
+      {
+       "reason": "length",
+       "type": "step-finish",
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6edbdbc001WliySFFBcA8Rze",
+       "sessionID": "ses_e3912425cffeikJ7gNhWDwR539",
+       "messageID": "msg_1c6edbdb1001cM6bBNdY2Fs8ex"
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

@@ -17,6 +17,7 @@ from auriga.cortex.session.codex import ACTOR_ISOLATION, CodexSession
 from auriga.core.config import Config
 from auriga.runtime.programs.runner import ProgramRunner
 from auriga.core.storage.store import Store
+from support.host_capabilities import bubblewrap_namespaces, program_isolation, require
 
 
 IDENTITY = dict(run_id="isolation-fixture", episode_id="ep", env_instance_id="env", env_generation=1)
@@ -79,6 +80,7 @@ class ActorIsolationTest(unittest.TestCase):
                     session.close()
                     store.close()
 
+    @require(bubblewrap_namespaces, "starts the native Codex actor inside its bubblewrap namespace sandbox")
     def test_generated_codex_namespace_allows_workspace_but_denies_host_files_and_network(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -156,6 +158,7 @@ print('codex_namespace_boundary_passed')
                     session.daemon_socket.with_suffix(".lock").unlink(missing_ok=True)
                 store.close()
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_program_channel_denies_observer_but_preserves_actor_derived_internal_data(self):
         with tempfile.TemporaryDirectory() as temporary:
             store = Store(Path(temporary) / "run", IDENTITY)

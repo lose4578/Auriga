@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from auriga.core import legacy_names as legacy
+from .native_evidence import codex_turn_timeline, load_native_evidence, parse_timestamp as _timestamp
 
 
 
@@ -22,12 +23,7 @@ def _native_audit(root, store, require_continuity=False):
     records = store.record_items
     events = list(_events(store))
     observations, requests, receipts, deliveries = [records(kind) for kind in ("observation", "action_request", "action_receipt", "delivery")]
-    raw_records = [json.loads(line) for line in (root / "codex-raw.jsonl").read_text().splitlines()]
-    if any(not isinstance(record, dict) or not isinstance(record.get("message"), dict)
-           or ("params" in record["message"] and not isinstance(record["message"]["params"], dict))
-           for record in raw_records):
-        raise ValueError("invalid_native_rpc_record")
-    raw = [record["message"] for record in raw_records]
+    evidence = load_native_evidence(root, manifest, store, profile="audit", events=events, require_texts=require_continuity)
     failures = []
     def check(condition, reason):
         if not condition: failures.append(reason)
@@ -37,7 +33,7 @@ def _native_audit(root, store, require_continuity=False):
     check(manifest["data_origin"] == "robodojo_runtime", "not a real RoboDojo run")
     check(len(requests) >= 1, "no EE action")
     check([e["server_seq"] for e in events] == list(range(1, len(events)+1)), "event sequence gap")
-    native_items = {(m.get("params") or {}).get("item", {}).get("id") for m in raw if m.get("method") == "item/started"}
+    native_items = evidence.tool_item_ids
     action_summaries = []
     for identifier, request in requests.items():
         receipt = receipts.get(identifier, {})
@@ -82,11 +78,7 @@ def _native_audit(root, store, require_continuity=False):
                 encoded, _ = encode_image(data, settings)
                 check(hashlib.sha256(encoded).hexdigest() == image["sha256"], "encoded model image hash differs from delivery")
             (program_image_hashes if delivery.get("delivery_channel")=="program_fd" or delivery.get("correlation",{}).get("program_id") else image_hashes).add(image["sha256"])
-    sent_hashes = set()
-    for message in raw:
-        for content in (message.get("result") or {}).get("contentItems", []):
-            if content.get("type") == "inputImage":
-                sent_hashes.add(hashlib.sha256(base64.b64decode(content["imageUrl"].split(",", 1)[1])).hexdigest())
+    sent_hashes = evidence.sent_image_sha256
     program_states = store.states("program_call")
     program_sent_hashes=set()
     for operation in program_states:
@@ -94,14 +86,14 @@ def _native_audit(root, store, require_continuity=False):
             if content.get("type")=="inputImage": program_sent_hashes.add(hashlib.sha256(base64.b64decode(content["imageUrl"].split(",",1)[1])).hexdigest())
     check(program_image_hashes <= program_sent_hashes, "program input image not proved by controlled IPC result")
     check(image_hashes <= sent_hashes, "delivery not proved by actual SDK tool response")
-    turns = [m["params"]["turn"] for m in raw if m.get("method") == "turn/completed" and m["params"].get("threadId") == manifest["thread_id"]]
-    terminal_interrupts = _owned_terminal_interrupts(raw_records, events, store, manifest["thread_id"])
+    turns = evidence.turn_terminals
+    terminal_interrupts = _owned_terminal_interrupts(None, events, store, manifest["thread_id"], evidence)
     check(any(t["status"] == "completed" for t in turns) or terminal_interrupts,
           "no completed or validly native-terminal-interrupted turn")
     if require_continuity:
         check(len({t["id"] for t in turns if t["status"] == "completed"}) >= 2, "two completed turns not proved")
         check(any(r.get("status") == "completed" for r in receipts.values()), "no completed EE action")
-        check(any(marker in item.get("text", "") for marker in ("AURIGA_CONTINUITY_OK", legacy.CONTINUITY_MARKER) for t in turns for item in t.get("items", []) if item.get("type") == "agentMessage"), "assistant continuity marker absent")
+        check(any(marker in text for marker in ("AURIGA_CONTINUITY_OK", legacy.CONTINUITY_MARKER) for text in evidence.completed_turn_texts), "assistant continuity marker absent")
     return dict(passed=not failures, run_id=manifest["run_id"], thread_id=manifest["thread_id"], terminal_session_id=manifest.get("terminal_session_id"),
                 native_completed_turns=len({t["id"] for t in turns if t["status"] == "completed"}), delivered_image_digests=len(image_hashes), program_image_digests=len(program_image_hashes), actions=action_summaries,
                 native_terminal_interrupted_turns=len(terminal_interrupts),
@@ -110,7 +102,7 @@ def _native_audit(root, store, require_continuity=False):
                 failures=failures, evidence="interface acceptance; no evaluator task score")
 
 
-def _owned_terminal_interrupts(raw_records, events, store, thread_id):
+def _owned_terminal_interrupts(raw_records, events, store, thread_id, evidence=None):
     """Count interrupted owner turns only when native terminal evidence caused the exact interrupt."""
     terminals = []
     for event in events:
@@ -143,70 +135,23 @@ def _owned_terminal_interrupts(raw_records, events, store, thread_id):
                 and (reason != "native_step_limit" or count >= limit)):
             terminals.append((event.get("server_seq"), terminal_at))
 
-    completed_events = {}
-    for event in events:
-        if not isinstance(event, dict):
-            continue
-        correlation = event.get("correlation")
-        if (event.get("type") != "codex.turn/completed" or event.get("source") != "codex_app_server"
-                or not isinstance(correlation, dict) or correlation.get("thread_id") != thread_id):
-            continue
-        payload = event.get("payload")
-        reference = payload.get("raw_ref") if isinstance(payload, dict) else None
-        if not reference:
-            continue
-        try:
-            _, content = store.resolve_artifact(reference, allowed_scopes=("observer",))
-            message = json.loads(content)
-        except (OSError, ValueError, KeyError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
-            continue
-        params = message.get("params") if isinstance(message, dict) else None
-        turn = params.get("turn") if isinstance(params, dict) else None
-        if (isinstance(params, dict) and params.get("threadId") == thread_id
-                and isinstance(turn, dict) and turn.get("status") == "interrupted" and turn.get("id")):
-            completed_events[(thread_id, turn["id"])] = event.get("server_seq")
-
-    turn_started, turn_interrupted, turn_completed = {}, {}, {}
-    for record in raw_records:
-        if not isinstance(record, dict) or not isinstance(record.get("message"), dict):
-            continue
-        message = record["message"]
-        params = message.get("params")
-        if not isinstance(params, dict):
-            continue
-        received_at = _timestamp(record.get("received_at"))
-        if record.get("direction") == "sent" and message.get("method") == "turn/interrupt":
-            turn_interrupted[(params.get("threadId"), params.get("turnId"))] = received_at
-        elif (record.get("direction") == "received" and message.get("method") in ("turn/started", "turn/completed")):
-            turn = params.get("turn")
-            if not isinstance(turn, dict) or not turn.get("id"):
-                continue
-            key = (params.get("threadId"), turn["id"])
-            if message["method"] == "turn/started":
-                turn_started[key] = received_at
-            else:
-                turn_completed[key] = (turn.get("status"), received_at)
+    if evidence is None:  # Codex records supplied directly (historical call shape)
+        evidence = codex_turn_timeline(raw_records, events, store, thread_id)
+    completed_events = evidence.interrupted_completion_seq
+    turn_started = evidence.turn_started_at
+    turn_completed = evidence.turn_completed
+    turn_interrupted = {request["turn_id"]: request["sent_at"] for request in evidence.interrupt_requests}
 
     return {
-        key[1] for key, (status, completed_at) in turn_completed.items()
-        if key[0] == thread_id and status == "interrupted" and completed_at is not None
-        and (start_at := turn_started.get(key)) is not None
-        and (interrupt_at := turn_interrupted.get(key)) is not None
+        turn_id for turn_id, (status, completed_at) in turn_completed.items()
+        if status == "interrupted" and completed_at is not None
+        and (start_at := turn_started.get(turn_id)) is not None
+        and (interrupt_at := turn_interrupted.get(turn_id)) is not None
         and start_at <= interrupt_at <= completed_at
-        and key in completed_events
-        and any(seq is not None and seq < completed_events[key] and start_at <= terminal_at <= interrupt_at
+        and turn_id in completed_events
+        and any(seq is not None and seq < completed_events[turn_id] and start_at <= terminal_at <= interrupt_at
                 for seq, terminal_at in terminals)
     }
-
-
-def _timestamp(value):
-    if not isinstance(value, str):
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return parsed if parsed.tzinfo is not None else None
 
 
 def _events(store):

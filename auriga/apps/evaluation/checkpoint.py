@@ -32,6 +32,24 @@ from ...core.storage.store import Store, open_read_store
 from ...core.tool_output import wire_content
 
 
+def require_codex_archive(source_run: str | Path) -> None:
+    """Refuse an archive not recorded by the Codex backend (design 04 §2.6).
+
+    Slicing, forked probes and live slices rebuild a Codex rollout and use the native ``thread/fork``; an archive of
+    another agent backend (``runtime/agent.backend``) has neither, so it is refused with
+    ``ValueError("checkpoint_requires_codex_archive:<backend>")`` before anything is copied. Archives without an
+    agent identity (older Codex runs) are accepted.
+    """
+    from ...cortex.agents.base import read_agent_identity
+    source_run = Path(source_run).resolve()
+    if not (source_run / "events.sqlite").exists():
+        return
+    with open_read_store(source_run) as store:
+        backend = (read_agent_identity(store) or {}).get("backend", "codex")
+    if backend != "codex":
+        raise ValueError(f"checkpoint_requires_codex_archive:{backend}")
+
+
 def find_rollout_path(run_dir: Path) -> Path:
     """定位运行目录内 Codex 原生保存的 rollout JSONL 文件。"""
     sessions_dir = Path(run_dir) / "private" / "codex-home" / "sessions"
@@ -733,7 +751,9 @@ def _truncate_sqlite_store(db_path: Path, until_call_id: str | None = None, unti
                         drop_calls.add(cid)
 
         cur.execute("DELETE FROM events WHERE seq > ?", (cut_seq,))
-        cur.execute("DELETE FROM state WHERE kind = 'runtime' AND id IN ('app_server', 'robot', 'model_requests', 'scene_obstacles')")
+        # runtime/agent is the parent's agent identity (thread, instance, pid); the fork's own runtime/codex,
+        # written by ForkedCodexSession.start_forked, is the identity read_agent_identity reports for the slice.
+        cur.execute("DELETE FROM state WHERE kind = 'runtime' AND id IN ('app_server', 'robot', 'model_requests', 'scene_obstacles', 'agent')")
         if last_task_plan is not None:
             cur.execute(
                 "INSERT OR REPLACE INTO state (kind, id, body) VALUES ('runtime', 'task_plan', ?)",
@@ -782,6 +802,7 @@ def prepare_checkpoint_slice(
     """从归档实验目录构建完整的切片运行目录（含 SQLite 裁剪、硬链接资产、前缀控制步与截断后的 Codex rollout）。"""
     source_run = Path(source_run).resolve()
     target_run = Path(target_run).resolve()
+    require_codex_archive(source_run)
     if target_run.exists() and any(target_run.iterdir()):
         raise ValueError(f"目标切片目录非空: {target_run}")
     target_run.mkdir(parents=True, exist_ok=True)

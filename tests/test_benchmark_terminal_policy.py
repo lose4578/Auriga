@@ -15,6 +15,7 @@ from auriga.apps.gateway.workbench import Workbench
 from auriga.apps.library.scoring import classify_episode_result
 from auriga.runtime.supervision import wait_turn
 from auriga.core.storage.store import Store
+from support.host_capabilities import program_isolation, require
 
 
 class BenchmarkTerminalPolicyCheck(unittest.IsolatedAsyncioTestCase):
@@ -43,6 +44,7 @@ class BenchmarkTerminalPolicyCheck(unittest.IsolatedAsyncioTestCase):
         workbench.program_continuation_state = lambda: Workbench.program_continuation_state(workbench)
         return fixture, job
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     async def test_review_paused_program_gets_continuation_and_can_resume_same_process(self):
         workbench = self.workbench()
         fixture, job = self.paused_program(workbench)
@@ -87,6 +89,7 @@ class BenchmarkTerminalPolicyCheck(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(await wait_benchmark(workbench, asyncio.Event()))
                 workbench.session.run_turn.assert_not_called()
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     async def test_stop_still_cancels_and_reaps_review_paused_program(self):
         workbench = self.workbench()
         fixture, job = self.paused_program(workbench)

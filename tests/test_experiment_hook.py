@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from support.host_capabilities import linux_proc, require
 
 spec = importlib.util.spec_from_file_location("experiment_hook", Path(__file__).parents[1] / "scripts/experiment_hook.py")
 hook = importlib.util.module_from_spec(spec)
@@ -29,6 +30,7 @@ raise SystemExit(9 if Path({str(root / 'fail')!r}).exists() else 0)
 
 
 class CompletionHookTests(unittest.TestCase):
+    @require(linux_proc, "binds processes by /proc/<pid>/stat start ticks")
     def test_pidfd_adoption_accepts_packaged_entrypoints_and_rejects_unrelated_commands(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -151,6 +153,7 @@ class CompletionHookTests(unittest.TestCase):
             self.assertTrue(hook.notify_completion(missing, THREAD, codex)["already_claimed"])
             self.assertEqual(len(calls.read_text().splitlines()), 2)
 
+    @require(linux_proc, "binds processes by /proc/<pid>/stat start ticks")
     def test_pidfd_identity_wait_and_active_state_rejection(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

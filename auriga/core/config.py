@@ -10,6 +10,8 @@ from dataclasses import asdict, dataclass, field, fields, is_dataclass, replace
 import json
 import math
 import os
+import re
+from urllib.parse import urlsplit
 from pathlib import Path
 import types
 from typing import Union, get_args, get_origin, get_type_hints
@@ -354,6 +356,174 @@ class QueueConfig(Section):
     wake_remote: str | None = None
 
 
+ENV_NAME_PATTERN = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+ANTHROPIC_BASE_URL = 'https://api.anthropic.com'
+
+
+@dataclass(frozen=True)
+class UpstreamConfig(Section):
+    """Where an agent backend's model requests are forwarded by the local accounting relay.
+
+    Real credentials never live in the config: only the NAME of the environment variable that holds the key is stored,
+    and the value is read by the gateway process at launch. The agent process itself only sees a local placeholder.
+    """
+    # Credential source. "explicit" = use wire_api/base_url/api_key_env below; "codex_home" = reuse the Codex credential
+    # source (model.codex_home config.toml + auth.json) on the OpenAI Responses wire; "claude_settings" = read the
+    # Anthropic Messages endpoint and key from a Claude Code settings file (`settings` below), claude_code only.
+    source: str = option('explicit', choices=('explicit', 'codex_home', 'claude_settings'))
+    # Claude Code settings.json in the official format, used when source is "claude_settings": `env.ANTHROPIC_BASE_URL`
+    # (default https://api.anthropic.com) and `env.ANTHROPIC_AUTH_TOKEN` (sent as Authorization: Bearer) or
+    # `env.ANTHROPIC_API_KEY` (sent as x-api-key). Read by the gateway only; the key is never copied into the run
+    # archive or the agent. A relative path is resolved next to the config file that sets it. null = not set.
+    settings: str | None = option(None, path=True)
+    # Wire protocol of the upstream endpoint; null = the backend's own default (claude_code: anthropic_messages).
+    wire_api: str | None = option(None, choices=('anthropic_messages', 'openai_responses', 'openai_chat'))
+    # http(s) base URL of the upstream API, without credentials, query or fragment (e.g. https://api.anthropic.com).
+    # null = not set (a backend that needs it rejects the launch).
+    base_url: str | None = None
+    # NAME (not value) of the environment variable holding the API key, e.g. ANTHROPIC_API_KEY. null = not set.
+    api_key_env: str | None = None
+    # Header carrying the key: "bearer" = Authorization: Bearer <key>; "x-api-key" = x-api-key: <key>.
+    auth_scheme: str = option('bearer', choices=('bearer', 'x-api-key'))
+    # Free label of the serving provider; keys price cards and resume identity, never sent upstream. null = unlabelled.
+    provider: str | None = None
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.base_url is not None:
+            try:
+                parts = urlsplit(self.base_url)
+                parts.port  # Raises ValueError for a malformed port.
+            except ValueError as error:
+                raise ConfigError('invalid_upstream_base_url') from error
+            if (parts.scheme not in ('http', 'https') or not parts.hostname or parts.username is not None
+                    or parts.password is not None or parts.query or parts.fragment or '?' in self.base_url
+                    or '#' in self.base_url):
+                raise ConfigError('invalid_upstream_base_url: http(s) URL without credentials, query or fragment')
+        if self.api_key_env is not None and not ENV_NAME_PATTERN.match(self.api_key_env):
+            raise ConfigError('invalid_upstream_api_key_env: expected an environment variable NAME, never the key')
+        if self.source == 'claude_settings' and not self.settings:
+            raise ConfigError('upstream_claude_settings_requires_settings: set upstream.settings to a Claude Code '
+                              'settings.json path')
+
+
+def _anthropic_upstream():
+    return UpstreamConfig(wire_api='anthropic_messages', base_url=ANTHROPIC_BASE_URL, api_key_env='ANTHROPIC_API_KEY',
+                          auth_scheme='x-api-key', provider='anthropic')
+
+
+@dataclass(frozen=True)
+class ClaudeCodeConfig(Section):
+    """Settings of the Claude Code agent backend (agent.backend = "claude_code"; optional extra auriga-harness[claude])."""
+    # Absolute path of the Claude Code CLI binary; null = the CLI bundled with the pinned claude-agent-sdk.
+    cli_path: str | None = option(path=True)
+    # Upstream model endpoint. Defaults: anthropic_messages wire, https://api.anthropic.com, ANTHROPIC_API_KEY, x-api-key, "anthropic".
+    upstream: UpstreamConfig = field(default_factory=_anthropic_upstream)
+    # How task context reaches the model each turn: "full" = complete state every turn; "delta" = only what changed
+    # since the previous delivery.
+    context_delivery: str = option('full', choices=('full', 'delta'))
+    # true (default) = the native subagent tool (Agent/Task) stays available; false = the actor works alone.
+    subagents: bool = True
+    # Token window (tokens, 100000..1000000) at which native auto-compaction triggers; null = the CLI default.
+    auto_compact_window_tokens: int | None = option(None, minimum=100000, maximum=1000000)
+
+
+@dataclass(frozen=True)
+class OpenCodeConfig(Section):
+    """Settings of the OpenCode agent backend (agent.backend = "opencode"; binary installed outside the Python env)."""
+    # Absolute path of the platform binary of the pinned opencode-ai release (not the node wrapper); null = not set.
+    executable: str | None = option(path=True)
+    # Upstream model endpoint; wire_api, base_url and api_key_env must be supplied (or source "codex_home").
+    upstream: UpstreamConfig = field(default_factory=UpstreamConfig)
+    # Model context window in tokens (model limit.context); drives native auto-compaction.
+    context_limit_tokens: int = option(200000, minimum=1)
+    # Maximum tokens generated per model call (model limit.output).
+    output_limit_tokens: int = option(32000, minimum=1)
+    # How task context reaches the model each turn: "full" or "delta" (as claude_code.context_delivery).
+    context_delivery: str = option('full', choices=('full', 'delta'))
+    # true (default) = the native subagent (task) tool is available; false = the actor works alone.
+    subagents: bool = True
+
+
+EVIDENCE_UPSTREAM_WIRES = ('openai_responses', 'anthropic_messages')
+
+
+@dataclass(frozen=True)
+class EvidenceConfig(Section):
+    """Client of the evidence helpers (features.visual_review_model and features.self_briefing; design 04 section 9).
+
+    Omitted from snapshots while unchanged, so Codex snapshots and frozen-checkout projections stay byte-identical.
+    """
+    # Which client answers visual review and self-briefing. "native" (default) = the backend's own evidence helper where
+    # it has one (Codex: CodexEvidenceAgent, a fresh ephemeral Codex app-server thread); backends without one always use
+    # the relay client. "relay" = RelayEvidenceClient on every backend: one fresh, streamed, tool-free model request per
+    # helper call through the run's own model relay (same counted 180-call budget, retries, recovery gate and egress
+    # scrub). Arms of a harness comparison that enable an evidence feature must all set "relay".
+    client: str = option('native', choices=('native', 'relay'))
+    # Upstream the relay client sends features.visual_review_model requests to, bound on the run's relay as the
+    # "evidence" upstream (its own wire and credentials; the shared budget). Needed when the actor's upstream cannot
+    # serve the review model, e.g. {"source": "codex_home"} for Sol review next to an anthropic_messages actor.
+    # null (default) = the actor's own upstream. Self-briefing always uses the actor's model and upstream. Only the
+    # relay client uses it: with client "native" on Codex it is refused. wire_api must be openai_responses or
+    # anthropic_messages; "explicit" needs wire_api and base_url, "codex_home" implies openai_responses.
+    upstream: UpstreamConfig | None = None
+
+    def __post_init__(self):
+        super().__post_init__()
+        upstream = self.upstream
+        if upstream is None:
+            return
+        if upstream.wire_api == 'openai_chat':
+            raise ConfigError('evidence_upstream_wire_not_implemented:openai_chat: choose openai_responses or '
+                              'anthropic_messages for agent.evidence.upstream.wire_api')
+        if upstream.source == 'codex_home':
+            if upstream.wire_api not in (None, 'openai_responses'):
+                raise ConfigError('evidence_upstream_codex_home_requires_openai_responses')
+        elif upstream.wire_api not in EVIDENCE_UPSTREAM_WIRES or upstream.base_url is None:
+            raise ConfigError('evidence_upstream_requires_wire_api_and_base_url: set agent.evidence.upstream.wire_api '
+                              'and base_url, or source "codex_home"')
+
+
+@dataclass(frozen=True)
+class AgentConfig(Section):
+    """Which agent runtime drives the actor. Default codex; the section is omitted from snapshots while unchanged.
+
+    model.name, model.effort, model.price_card and model.transport_recovery apply to every backend; model.codex_home
+    and model.native_memories are Codex-only.
+    """
+    # Agent runtime: "codex" (native Codex app-server), "claude_code" or "opencode". CLI: --agent-backend.
+    backend: str = option('codex', choices=('codex', 'claude_code', 'opencode'))
+    claude_code: ClaudeCodeConfig = field(default_factory=ClaudeCodeConfig)
+    opencode: OpenCodeConfig = field(default_factory=OpenCodeConfig)
+    # Evidence helper client (visual review, self-briefing); see EvidenceConfig.
+    evidence: EvidenceConfig = field(default_factory=EvidenceConfig)
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.backend == 'codex' and self.evidence.client == 'native' and self.evidence.upstream is not None:
+            # CodexEvidenceAgent always uses the actor's provider; an evidence upstream would be silently ignored.
+            raise ConfigError('evidence_upstream_requires_relay_client: set agent.evidence.client="relay" or remove '
+                              'agent.evidence.upstream (the native Codex evidence agent uses the actor provider)')
+
+    def to_dict(self):
+        # The default evidence section is omitted so agent snapshots of earlier checkouts stay identical.
+        value = super().to_dict()
+        if self.evidence == EvidenceConfig():
+            value.pop('evidence', None)
+        return value
+
+
+def _section_type(annotation):
+    """The Section dataclass of a field annotated ``S`` or ``S | None``; None for any other annotation."""
+    if is_dataclass(annotation):
+        return annotation
+    if get_origin(annotation) in (Union, types.UnionType):
+        options = [item for item in get_args(annotation) if item is not type(None)]
+        if len(options) == 1 and is_dataclass(options[0]):
+            return options[0]
+    return None
+
+
 def _construct(cls, value, prefix='config', base=None):
     if not isinstance(value, dict):
         raise ConfigError(f'config_object_required:{prefix}')
@@ -368,8 +538,10 @@ def _construct(cls, value, prefix='config', base=None):
         if key not in value:
             continue
         part = value[key]
-        if is_dataclass(annotation):
-            part = _construct(annotation, part, prefix + '.' + key, base)
+        section = _section_type(annotation)
+        if section is not None and (part is not None or is_dataclass(annotation)):
+            # An optional section (``S | None``) stays None when null; a required one must be an object.
+            part = _construct(section, part, prefix + '.' + key, base)
         elif get_origin(annotation) is tuple and isinstance(part, list):
             part = tuple(part)
         if item.metadata.get('path') and isinstance(part, str) and part.strip():
@@ -470,6 +642,16 @@ class Config(Section):
     scene: SceneConfig = field(default_factory=SceneConfig)
     queue: QueueConfig = field(default_factory=QueueConfig)
     analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
+    agent: AgentConfig = field(default_factory=AgentConfig)
+
+    def to_dict(self):
+        # Unused agent sections are omitted so Codex-only manifests and snapshots stay byte-identical.
+        value = super().to_dict()
+        if self.agent == AgentConfig():
+            value.pop('agent', None)
+        elif self.agent.evidence == EvidenceConfig():
+            value['agent'].pop('evidence', None)
+        return value
 
     def __post_init__(self):
         super().__post_init__()
@@ -499,7 +681,10 @@ class Config(Section):
         # Resolve defaults too, so all exported deployment paths are absolute.
         if not isinstance(value, dict):
             raise ConfigError('config_object_required')
-        return _construct(cls, _merge(cls().to_dict(), _handoff_compat(value)), base=Path(base) if base else None)
+        # The default agent section is omitted from to_dict(); merge it back so partial agent documents inherit
+        # backend-specific defaults (e.g. the Anthropic upstream of claude_code).
+        defaults = {**cls().to_dict(), 'agent': AgentConfig().to_dict()}
+        return _construct(cls, _merge(defaults, _handoff_compat(value)), base=Path(base) if base else None)
 
     @classmethod
     def load(cls, path=None, *, environ=None, overrides=None):
@@ -533,8 +718,9 @@ class Config(Section):
                     if key not in declared:
                         raise ConfigError(f'unknown_config_keys:{schema.__name__}.{key}')
                     item = declared[key]
-                    if is_dataclass(hints[key]):
-                        part = normalize(part, hints[key])
+                    section = _section_type(hints[key])
+                    if section is not None and (part is not None or is_dataclass(hints[key])):
+                        part = normalize(part, section)
                     elif item.metadata.get('path') and isinstance(part, str):
                         part = str((source.parent / Path(part).expanduser()).resolve()) if part.strip() else part
                     out[key] = part
@@ -582,7 +768,7 @@ FEATURE_FIELDS = frozenset(item.name for item in fields(FeaturesConfig))
 CLI_FIELDS = {**{name: ('run', name) for name in RUN_FIELDS},
               **{name: ('features', name) for name in FEATURE_FIELDS},
               'image_feedback_policy': ('images', 'feedback_policy'),
-              'model': ('model', 'name'), 'effort': ('model', 'effort'),
+              'model': ('model', 'name'), 'agent_backend': ('agent', 'backend'), 'effort': ('model', 'effort'),
               'codex_home': ('model', 'codex_home'), 'price_card': ('model', 'price_card')}
 
 

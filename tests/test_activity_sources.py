@@ -14,6 +14,7 @@ from auriga.core.config import Config
 from auriga.robot.backends.robodojo.robot_process import RobotProcess
 from auriga.core.storage.store import Store
 from auriga.robot.backends.robodojo.worker_protocol import WIRE_PREFIX
+from support.host_capabilities import program_isolation, require
 
 
 class ActivitySourcesTest(unittest.TestCase):
@@ -71,6 +72,7 @@ class ActivitySourcesTest(unittest.TestCase):
             with patch('auriga.robot.backends.robodojo.robot_process.time.monotonic', return_value=20):
                 robot._read()
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_program_output_advances_clock_without_polling_refresh(self):
         from program_fixture import program_services
         from auriga.runtime.programs.runner import ProgramRunner

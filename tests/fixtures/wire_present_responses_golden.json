@@ -1,0 +1,1398 @@
+{
+ "captured_from": {
+  "revision": "c4ff16a"
+ },
+ "cases": {
+  "lean_projection_block": {
+   "input_unchanged": true,
+   "output": {
+    "input": [
+     {
+      "content": [
+       {
+        "text": "Task: stack the blocks.",
+        "type": "input_text"
+       }
+      ],
+      "role": "user",
+      "type": "message"
+     },
+     {
+      "arguments": "{}",
+      "call_id": "call_000",
+      "name": "robot_observe",
+      "type": "function_call"
+     },
+     {
+      "call_id": "call_000",
+      "output": [
+       {
+        "text": "{\"bundle\":{\"cameras\":[{\"camera_id\":\"head\"},{\"camera_id\":\"wrist\"}],\"observation_id\":\"obs_0\"}}",
+        "type": "input_text"
+       },
+       {
+        "image_url": "data:image/png;base64,s99JdFypuPNHWlDbfH/8l+k0tG+/uQNPncg12O1vLHqz30l0XKm480daUNt8f/yX6TS0b7+5A0+dyDXY7W8seg==",
+        "type": "input_image"
+       },
+       {
+        "detail": "high",
+        "image_url": "data:image/png;base64,KVSPKBVpXV02fRGGIiTgQMnCs5lm4pwaoyqUPfdW4vspVI8oFWldXTZ9EYYiJOBAycKzmWbinBqjKpQ991bi+w==",
+        "type": "input_image"
+       }
+      ],
+      "type": "function_call_output"
+     },
+     {
+      "arguments": "{}",
+      "call_id": "call_001",
+      "name": "robot_observe",
+      "type": "function_call"
+     },
+     {
+      "call_id": "call_001",
+      "output": [
+       {
+        "text": "{\"bundle\":{\"cameras\":[{\"camera_id\":\"head\"},{\"camera_id\":\"wrist\"}],\"observation_id\":\"obs_1\"}}",
+        "type": "input_text"
+       },
+       {
+        "image_url": "data:image/png;base64,vKi/AWqz6ZbQ7WQsZUg2drk01ttRq/WLF1BxAW+1cV28qL8BarPpltDtZCxlSDZ2uTTW21Gr9YsXUHEBb7VxXQ==",
+        "type": "input_image"
+       },
+       {
+        "detail": "high",
+        "image_url": "data:image/png;base64,5tayYQt4nEeFyQxANTV6PI4xRj5+cA0NF9HQgmiyt6vm1rJhC3icR4XJDEA1NXo8jjFGPn5wDQ0X0dCCaLK3qw==",
+        "type": "input_image"
+       }
+      ],
+      "type": "function_call_output"
+     },
+     {
+      "arguments": "{}",
+      "call_id": "call_002",
+      "name": "robot_observe",
+      "type": "function_call"
+     },
+     {
+      "call_id": "call_002",
+      "output": [
+       {
+        "text": "{\"bundle\":{\"cameras\":[{\"camera_id\":\"head\"},{\"camera_id\":\"wrist\"}],\"observation_id\":\"obs_2\"}}",
+        "type": "input_text"
+       },
+       {
+        "image_url": "data:image/png;base64,+iDjDwCVrxVW+3aTQsrmW6yUpg9EfOwxpeW7v2bVNrT6IOMPAJWvFVb7dpNCyuZbrJSmD0R87DGl5bu/ZtU2tA==",
+        "type": "input_image"
+       },
+       {
+        "detail": "high",
+        "image_url": "data:image/png;base64,1nS7lQ/zEzxWeNsN0bGlyhrfJgS0MbFMCs57DzPJ2sPWdLuVD/MTPFZ42w3RsaXKGt8mBLQxsUwKznsPM8naww==",
+        "type": "input_image"
+       }
+      ],
+      "type": "function_call_output"
+     },
+     {
+      "arguments": "{}",
+      "call_id": "call_003",
+      "name": "robot_observe",
+      "type": "function_call"
+     },
+     {
+      "call_id": "call_003",
+      "output": [
+       {
+        "text": "{\"bundle\":{\"cameras\":[{\"camera_id\":\"head\"},{\"camera_id\":\"wrist\"}],\"observation_id\":\"obs_3\"}}",
+        "type": "input_text"
+       },
+       {
+        "image_url": "data:image/png;base64,gZsaUfzuKLHwxnoGlfNsG+VZhC08Mpgm+I7EQcDjYgKBmxpR/O4osfDGegaV82wb5VmELTwymCb4jsRBwONiAg==",
+        "type": "input_image"
+       },
+       {
+        "detail": "high",
+        "image_url": "data:image/png;base64,PaaFbCWHLDwdCQe+0YorIZZScSM8TSx0OkJLrP/H+Rc9poVsJYcsPB0JB77RiishllJxIzxNLHQ6Qkus/8f5Fw==",
+        "type": "input_image"
+       }
+      ],
+      "type": "function_call_output"
+     },
+     {
+      "arguments": "{}",
+      "call_id": "call_004",
+      "name": "robot_observe",
+      "type": "function_call"
+     },
+     {
+      "call_id": "call_004",
+      "output": [
+       {
+        "text": "{\"bundle\":{\"cameras\":[{\"camera_id\":\"head\"},{\"camera_id\":\"wrist\"}],\"observation_id\":\"obs_4\"}}",
+        "type": "input_text"
+       },
+       {
+        "image_url": "data:image/png;base64,QaMrSqmn52qinDkDoU1FDc9u6yMBtwZhhOHP+eGgQbhBoytKqafnaqKcOQOhTUUNz27rIwG3BmGE4c/54aBBuA==",
+        "type": "input_image"
+       },
+       {
+        "detail": "high",
+        "image_url": "data:image/png;base64,J46fp61fmmHVOmaCM0dsTeJCZEJSjDcHIjKczLvuRvonjp+nrV+aYdU6ZoIzR2xN4kJkQlKMNwciMpzMu+5G+g==",
+        "type": "input_image"
+       }
+      ],
+      "type": "function_call_output"
+     },
+     {
+      "content": [
+       {
+        "text": "step 4 done",
+        "type": "output_text"
+       }
+      ],
+      "role": "assistant",
+      "type": "message"
+     },
+     {
+      "arguments": "{}",
+      "call_id": "call_005",
+      "name": "robot_observe",
+      "type": "function_call"
+     },
+     {
+      "call_id": "call_005",
+      "output": [
+       {
+        "text": "{\"bundle\":{\"cameras\":[{\"camera_id\":\"head\"},{\"camera_id\":\"wrist\"}],\"observation_id\":\"obs_5\"}}",
+        "type": "input_text"
+       },
+       {
+        "image_url": "data:image/png;base64,QIVozdZ8vfF3Ur8e0b6bnlBgwyoTCYSaqUhYEtMeBc1AhWjN1ny98XdSvx7RvpueUGDDKhMJhJqpSFgS0x4FzQ==",
+        "type": "input_image"
+       },
+       {
+        "detail": "high",
+        "image_url": "data:image/png;base64,kKWgNA08QzzkrlKhWF9iE+oW5S6QXlOkC4xAAZhYZQGQpaA0DTxDPOSuUqFYX2IT6hblLpBeU6QLjEABmFhlAQ==",
+        "type": "input_image"
+       }
+      ],
+      "type": "function_call_output"
+     },
+     {
+      "call_id": "call_tail",
+      "output": "{\"receipt\":{\"action_id\":\"act_1\",\"status\":\"completed\"}}",
+      "type": "function_call_output"
+     }
+    ],
+    "model": "gpt-fixture"
+   }
+  },
+  "lean_projection_trailing": {
+   "input_unchanged": true,
+   "output": {
+    "input": [
+     {
+      "content": [
+       {
+        "text": "Task: stack the blocks.",
+        "type": "input_text"
+       }
+      ],
+      "role": "user",
+      "type": "message"
+     },
+     {
+      "arguments": "{}",
+      "call_id": "call_000",
+      "name": "robot_observe",
+      "type": "function_call"
+     },
+     {
+      "call_id": "call_000",
+      "output": [
+       {
+        "text": "[summary robot_observe] {\"observation_id\":\"obs_0\"}",
+        "type": "input_text"
+       },
+       {
+        "text": "[image 1/2: pixels only in the latest tool feedback; history_view_observation rereads]",
+        "type": "input_text"
+       },
+       {
+        "text": "[image 2/2: pixels only in the latest tool feedback; history_view_observation rereads]",
+        "type": "input_text"
+       }
+      ],
+      "type": "function_call_output"
+     },
+     {
+      "arguments": "{}",
+      "call_id": "call_001",
+      "name": "robot_observe",
+      "type": "function_call"
+     },
+     {
+      "call_id": "call_001",
+      "output": [
+       {
+        "text": "[summary robot_observe] {\"observation_id\":\"obs_1\"}",
+        "type": "input_text"
+       },
+       {
+        "text": "[image 1/2: pixels only in the latest tool feedback; history_view_observation rereads]",
+        "type": "input_text"
+       },
+       {
+        "text": "[image 2/2: pixels only in the latest tool feedback; history_view_observation rereads]",
+        "type": "input_text"
+       }
+      ],
+      "type": "function_call_output"
+     },
+     {
+      "arguments": "{}",
+      "call_id": "call_002",
+      "name": "robot_observe",
+      "type": "function_call"
+     },
+     {
+      "call_id": "call_002",
+      "output": [
+       {
+        "text": "[summary robot_observe] {\"observation_id\":\"obs_2\"}",
+        "type": "input_text"
+       },
+       {
+        "text": "[image 1/2: pixels only in the latest tool feedback; history_view_observation rereads]",
+        "type": "input_text"
+       },
+       {
+        "text": "[image 2/2: pixels only in the latest tool feedback; history_view_observation rereads]",
+        "type": "input_text"
+       }
+      ],
+      "type": "function_call_output"
+     },
+     {
+      "arguments": "{}",
+      "call_id": "call_003",
+      "name": "robot_observe",
+      "type": "function_call"
+     },
+     {
+      "call_id": "call_003",
+      "output": [
+       {
+        "text": "[summary robot_observe] {\"observation_id\":\"obs_3\"}",
+        "type": "input_text"
+       },
+       {
+        "text": "[image 1/2: pixels only in the latest tool feedback; history_view_observation rereads]",
+        "type": "input_text"
+       },
+       {
+        "text": "[image 2/2: pixels only in the latest tool feedback; history_view_observation rereads]",
+        "type": "input_text"
+       }
+      ],
+      "type": "function_call_output"
+     },
+     {
+      "arguments": "{}",
+      "call_id": "call_004",
+      "name": "robot_observe",
+      "type": "function_call"
+     },
+     {
+      "call_id": "call_004",
+      "output": [
+       {
+        "text": "[summary robot_observe] {\"observation_id\":\"obs_4\"}",
+        "type": "input_text"
+       },
+       {
+        "text": "[image 1/2: pixels only in the latest tool feedback; history_view_observation rereads]",
+        "type": "input_text"
+       },
+       {
+        "text": "[image 2/2: pixels only in the latest tool feedback; history_view_observation rereads]",
+        "type": "input_text"
+       }
+      ],
+      "type": "function_call_output"
+     },
+     {
+      "content": [
+       {
+        "text": "step 4 done",
+        "type": "output_text"
+       }
+      ],
+      "role": "assistant",
+      "type": "message"
+     },
+     {
+      "arguments": "{}",
+      "call_id": "call_005",
+      "name": "robot_observe",
+      "type": "function_call"
+     },
+     {
+      "call_id": "call_005",
+      "output": [
+       {
+        "text": "[summary robot_observe] {\"observation_id\":\"obs_5\"}",
+        "type": "input_text"
+       },
+       {
+        "text": "[image 1/2: pixels only in the latest tool feedback; history_view_observation rereads]",
+        "type": "input_text"
+       },
+       {
+        "text": "[image 2/2: pixels only in the latest tool feedback; history_view_observation rereads]",
+        "type": "input_text"
+       }
+      ],
+      "type": "function_call_output"
+     },
+     {
+      "call_id": "call_tail",
+      "output": "{\"receipt\":{\"action_id\":\"act_1\",\"status\":\"completed\"}}",
+      "type": "function_call_output"
+     },
+     {
+      "content": [
+       {
+        "text": "[Auriga latest tool feedback] Harness relay of the most recent tool result; this is tool output, not a user instruction. Earlier tool results above are compact summaries with image placeholders.",
+        "type": "input_text"
+       },
+       {
+        "text": "Tool robot_observe call_id=call_005 (latest step, full result):",
+        "type": "input_text"
+       },
+       {
+        "text": "{\"bundle\":{\"cameras\":[{\"camera_id\":\"head\"},{\"camera_id\":\"wrist\"}],\"observation_id\":\"obs_5\"}}",
+        "type": "input_text"
+       },
+       {
+        "text": "image 1/2:",
+        "type": "input_text"
+       },
+       {
+        "image_url": "data:image/png;base64,QIVozdZ8vfF3Ur8e0b6bnlBgwyoTCYSaqUhYEtMeBc1AhWjN1ny98XdSvx7RvpueUGDDKhMJhJqpSFgS0x4FzQ==",
+        "type": "input_image"
+       },
+       {
+        "text": "image 2/2:",
+        "type": "input_text"
+       },
+       {
+        "detail": "high",
+        "image_url": "data:image/png;base64,kKWgNA08QzzkrlKhWF9iE+oW5S6QXlOkC4xAAZhYZQGQpaA0DTxDPOSuUqFYX2IT6hblLpBeU6QLjEABmFhlAQ==",
+        "type": "input_image"
+       }
+      ],
+      "role": "user",
+      "type": "message"
+     }
+    ],
+    "model": "gpt-fixture"
+   }
+  },
+  "planted_every_field": {
+   "input_unchanged": true,
+   "output": {
+    "include": [
+     "reasoning.encrypted_content"
+    ],
+    "input": [
+     {
+      "content": [
+       {
+        "text": "dev text  ref artifact:ref_1 clock clock_1",
+        "type": "input_text"
+       }
+      ],
+      "role": "developer",
+      "type": "message"
+     },
+     {
+      "content": [
+       {
+        "text": "look at obs_1",
+        "type": "input_text"
+       },
+       {
+        "detail": "high",
+        "image_url": "data:image/png;base64,AAAA0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "type": "input_image"
+       }
+      ],
+      "role": "user",
+      "type": "message"
+     },
+     {
+      "encrypted_content": "gAAAA0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "id": "rs_ffffffffffffffffffffffffffffffffffffffff",
+      "summary": [
+       {
+        "text": "thinking about act_1 ",
+        "type": "summary_text"
+       }
+      ],
+      "type": "reasoning"
+     },
+     {
+      "arguments": "{\"note\":\"\",\"observation_id\":\"obs_1\"}",
+      "call_id": "call_222222222222222222222222",
+      "id": "fc_11111111111111111111111111111111",
+      "name": "robot_observe",
+      "type": "function_call"
+     },
+     {
+      "call_id": "call_222222222222222222222222",
+      "output": [
+       {
+        "text": "{\"artifact\":\"artifact:ref_1\",\"bundle\":{\"clock\":\"clock_1\",\"observation_id\":\"obs_1\"}}",
+        "type": "input_text"
+       },
+       {
+        "image_url": "data:image/png;base64,BBBB",
+        "type": "input_image"
+       }
+      ],
+      "type": "function_call_output"
+     },
+     {
+      "call_id": "call_3",
+      "input": "print('artifact:ref_1')  # ",
+      "name": "program",
+      "type": "custom_tool_call"
+     },
+     {
+      "call_id": "call_3",
+      "output": "/home/fixture/run/private/program-workspaces/w1/main.py ok  act_1",
+      "type": "custom_tool_call_output"
+     },
+     {
+      "tools": [
+       {
+        "execution": "client",
+        "type": "tool_search"
+       }
+      ],
+      "type": "additional_tools"
+     },
+     {
+      "arguments": {
+       "limit": 2,
+       "query": "robot ",
+       "ref": "obs_1"
+      },
+      "call_id": "search-1",
+      "execution": "client",
+      "type": "tool_search_call"
+     },
+     {
+      "call_id": "search-1",
+      "execution": "client",
+      "status": "completed",
+      "tools": [
+       {
+        "description": "ns ",
+        "name": "auriga",
+        "tools": [
+         {
+          "description": "Read ",
+          "name": "fixture_read",
+          "parameters": {
+           "properties": {
+            "value_sha256": {
+             "description": "",
+             "type": "string"
+            }
+           },
+           "type": "object"
+          },
+          "type": "function"
+         }
+        ],
+        "type": "namespace"
+       }
+      ],
+      "type": "tool_search_output"
+     },
+     {
+      "content": [
+       {
+        "text": "I will act on act_1",
+        "type": "output_text"
+       },
+       {
+        "refusal": "no ",
+        "type": "refusal"
+       }
+      ],
+      "role": "assistant",
+      "type": "message"
+     },
+     {
+      "encrypted_content": "opaque-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "id": "cmp_33333333333333333333",
+      "type": "compaction"
+     }
+    ],
+    "instructions": "Base instructions  keep 0.765 m and artifact:ref_1",
+    "metadata": {
+     "note": "sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    },
+    "model": "gpt-fixture",
+    "prompt_cache_key": "thread-99999999999999999999999999999999",
+    "reasoning": {
+     "effort": "high",
+     "summary": "auto"
+    },
+    "store": false,
+    "stream": true,
+    "text": {
+     "format": {
+      "name": "answer",
+      "schema": {
+       "properties": {
+        "sha256": {
+         "type": "string"
+        }
+       },
+       "type": "object"
+      },
+      "strict": true,
+      "type": "json_schema"
+     },
+     "verbosity": "low"
+    },
+    "tools": [
+     {
+      "description": "Move. ",
+      "name": "robot_move",
+      "parameters": {
+       "properties": {
+        "commit": {
+         "type": "string"
+        },
+        "x_m": {
+         "description": "metres",
+         "type": "number"
+        }
+       },
+       "type": "object"
+      },
+      "type": "function"
+     },
+     {
+      "description": "deferred",
+      "name": "auriga",
+      "tools": [
+       {
+        "description": "Read ",
+        "name": "fixture_read",
+        "parameters": {
+         "properties": {
+          "value_sha256": {
+           "description": "",
+           "type": "string"
+          }
+         },
+         "type": "object"
+        },
+        "type": "function"
+       }
+      ],
+      "type": "namespace"
+     },
+     {
+      "description": "Run code ",
+      "format": {
+       "definition": "start: /.+/",
+       "syntax": "lark",
+       "type": "grammar"
+      },
+      "name": "program",
+      "type": "custom"
+     },
+     {
+      "type": "local_shell"
+     },
+     {
+      "environment": {
+       "type": "local"
+      },
+      "type": "shell"
+     },
+     {
+      "description": "search ",
+      "execution": "client",
+      "type": "tool_search"
+     }
+    ]
+   }
+  },
+  "rejected_0": {
+   "error": "sandbox_remote_model_tool_disabled",
+   "input_unchanged": true
+  },
+  "rejected_1": {
+   "error": "sandbox_remote_model_tool_disabled",
+   "input_unchanged": true
+  },
+  "rejected_2": {
+   "error": "sandbox_remote_model_tool_disabled",
+   "input_unchanged": true
+  },
+  "rejected_3": {
+   "error": "sandbox_remote_model_tool_disabled",
+   "input_unchanged": true
+  },
+  "rejected_4": {
+   "error": "sandbox_remote_model_tool_disabled",
+   "input_unchanged": true
+  },
+  "rejected_5": {
+   "error": "sandbox_remote_model_tool_disabled",
+   "input_unchanged": true
+  },
+  "rejected_6": {
+   "error": "sandbox_remote_media_url_disabled",
+   "input_unchanged": true
+  },
+  "rejected_7": {
+   "error": "sandbox_remote_media_url_disabled",
+   "input_unchanged": true
+  },
+  "rejected_8": {
+   "error": "native_discovered_tool_not_registered",
+   "input_unchanged": true
+  },
+  "rejected_9": {
+   "error": "native_discovered_tool_not_registered",
+   "input_unchanged": true
+  },
+  "request_dump": {
+   "dumps": [
+    {
+     "forwarded": {
+      "include": [
+       "reasoning.encrypted_content"
+      ],
+      "input": [
+       {
+        "content": [
+         {
+          "text": "dev text  ref artifact:ref_1 clock clock_1",
+          "type": "input_text"
+         }
+        ],
+        "role": "developer",
+        "type": "message"
+       },
+       {
+        "content": [
+         {
+          "text": "look at obs_1",
+          "type": "input_text"
+         },
+         {
+          "detail": "high",
+          "image_url": "<data-url sha256=888fe57a69170262 chars=90>",
+          "type": "input_image"
+         }
+        ],
+        "role": "user",
+        "type": "message"
+       },
+       {
+        "encrypted_content": "gAAAA0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "id": "rs_ffffffffffffffffffffffffffffffffffffffff",
+        "summary": [
+         {
+          "text": "thinking about act_1 ",
+          "type": "summary_text"
+         }
+        ],
+        "type": "reasoning"
+       },
+       {
+        "arguments": "{\"note\":\"\",\"observation_id\":\"obs_1\"}",
+        "call_id": "call_222222222222222222222222",
+        "id": "fc_11111111111111111111111111111111",
+        "name": "robot_observe",
+        "type": "function_call"
+       },
+       {
+        "call_id": "call_222222222222222222222222",
+        "output": [
+         {
+          "text": "{\"artifact\":\"artifact:ref_1\",\"bundle\":{\"clock\":\"clock_1\",\"observation_id\":\"obs_1\"}}",
+          "type": "input_text"
+         },
+         {
+          "image_url": "<data-url sha256=51d196572951df98 chars=26>",
+          "type": "input_image"
+         }
+        ],
+        "type": "function_call_output"
+       },
+       {
+        "call_id": "call_3",
+        "input": "print('artifact:ref_1')  # ",
+        "name": "program",
+        "type": "custom_tool_call"
+       },
+       {
+        "call_id": "call_3",
+        "output": "/home/fixture/run/private/program-workspaces/w1/main.py ok  act_1",
+        "type": "custom_tool_call_output"
+       },
+       {
+        "tools": [
+         {
+          "execution": "client",
+          "type": "tool_search"
+         }
+        ],
+        "type": "additional_tools"
+       },
+       {
+        "arguments": {
+         "limit": 2,
+         "query": "robot ",
+         "ref": "obs_1"
+        },
+        "call_id": "search-1",
+        "execution": "client",
+        "type": "tool_search_call"
+       },
+       {
+        "call_id": "search-1",
+        "execution": "client",
+        "status": "completed",
+        "tools": [
+         {
+          "description": "ns ",
+          "name": "auriga",
+          "tools": [
+           {
+            "description": "Read ",
+            "name": "fixture_read",
+            "parameters": {
+             "properties": {
+              "value_sha256": {
+               "description": "",
+               "type": "string"
+              }
+             },
+             "type": "object"
+            },
+            "type": "function"
+           }
+          ],
+          "type": "namespace"
+         }
+        ],
+        "type": "tool_search_output"
+       },
+       {
+        "content": [
+         {
+          "text": "I will act on act_1",
+          "type": "output_text"
+         },
+         {
+          "refusal": "no ",
+          "type": "refusal"
+         }
+        ],
+        "role": "assistant",
+        "type": "message"
+       },
+       {
+        "encrypted_content": "opaque-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "id": "cmp_33333333333333333333",
+        "type": "compaction"
+       }
+      ],
+      "instructions": "Base instructions  keep 0.765 m and artifact:ref_1",
+      "metadata": {
+       "note": "sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      },
+      "model": "gpt-fixture",
+      "prompt_cache_key": "thread-99999999999999999999999999999999",
+      "reasoning": {
+       "effort": "high",
+       "summary": "auto"
+      },
+      "store": false,
+      "stream": true,
+      "text": {
+       "format": {
+        "name": "answer",
+        "schema": {
+         "properties": {
+          "sha256": {
+           "type": "string"
+          }
+         },
+         "type": "object"
+        },
+        "strict": true,
+        "type": "json_schema"
+       },
+       "verbosity": "low"
+      },
+      "tools": [
+       {
+        "description": "Move. ",
+        "name": "robot_move",
+        "parameters": {
+         "properties": {
+          "commit": {
+           "type": "string"
+          },
+          "x_m": {
+           "description": "metres",
+           "type": "number"
+          }
+         },
+         "type": "object"
+        },
+        "type": "function"
+       },
+       {
+        "description": "deferred",
+        "name": "auriga",
+        "tools": [
+         {
+          "description": "Read ",
+          "name": "fixture_read",
+          "parameters": {
+           "properties": {
+            "value_sha256": {
+             "description": "",
+             "type": "string"
+            }
+           },
+           "type": "object"
+          },
+          "type": "function"
+         }
+        ],
+        "type": "namespace"
+       },
+       {
+        "description": "Run code ",
+        "format": {
+         "definition": "start: /.+/",
+         "syntax": "lark",
+         "type": "grammar"
+        },
+        "name": "program",
+        "type": "custom"
+       },
+       {
+        "type": "local_shell"
+       },
+       {
+        "environment": {
+         "type": "local"
+        },
+        "type": "shell"
+       },
+       {
+        "description": "search ",
+        "execution": "client",
+        "type": "tool_search"
+       }
+      ]
+     },
+     "forwarded_body_bytes": 3341,
+     "forwarded_body_sha256": "0c2ac11dad38f97f4448283d8b16441f1ea126a4d3f2fc3d55082ceae8f144f5",
+     "index": 1,
+     "original": {
+      "include": [
+       "reasoning.encrypted_content"
+      ],
+      "input": [
+       {
+        "content": [
+         {
+          "text": "dev text digest: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef ref artifact:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb clock env-eeeeeeeeeeeeeeee/generation-3",
+          "type": "input_text"
+         }
+        ],
+        "role": "developer",
+        "type": "message"
+       },
+       {
+        "content": [
+         {
+          "text": "look at observation-cccccccccccccccccccccccccccccccc",
+          "type": "input_text"
+         },
+         {
+          "detail": "high",
+          "image_url": "<data-url sha256=888fe57a69170262 chars=90>",
+          "type": "input_image"
+         }
+        ],
+        "role": "user",
+        "type": "message"
+       },
+       {
+        "encrypted_content": "gAAAA0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "id": "rs_ffffffffffffffffffffffffffffffffffffffff",
+        "summary": [
+         {
+          "text": "thinking about action-dddddddddddddddddddddddd hash 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "type": "summary_text"
+         }
+        ],
+        "type": "reasoning"
+       },
+       {
+        "arguments": "{\"observation_id\": \"observation-cccccccccccccccccccccccccccccccc\", \"note\": \"sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}",
+        "call_id": "call_222222222222222222222222",
+        "id": "fc_11111111111111111111111111111111",
+        "name": "robot_observe",
+        "type": "function_call"
+       },
+       {
+        "call_id": "call_222222222222222222222222",
+        "output": [
+         {
+          "text": "{\"bundle\": {\"observation_id\": \"observation-cccccccccccccccccccccccccccccccc\", \"source_sha256\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\", \"clock\": \"env-eeeeeeeeeeeeeeee/generation-3\"}, \"artifact\": \"artifact:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb\"}",
+          "type": "input_text"
+         },
+         {
+          "image_url": "<data-url sha256=51d196572951df98 chars=26>",
+          "type": "input_image"
+         }
+        ],
+        "type": "function_call_output"
+       },
+       {
+        "call_id": "call_3",
+        "input": "print('artifact:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb')  # commit 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "name": "program",
+        "type": "custom_tool_call"
+       },
+       {
+        "call_id": "call_3",
+        "output": "/home/fixture/run/private/program-workspaces/w1/main.py ok digest=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef action-dddddddddddddddddddddddd",
+        "type": "custom_tool_call_output"
+       },
+       {
+        "tools": [
+         {
+          "execution": "client",
+          "type": "tool_search"
+         }
+        ],
+        "type": "additional_tools"
+       },
+       {
+        "arguments": {
+         "limit": 2,
+         "query": "robot hash=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+         "ref": "observation-cccccccccccccccccccccccccccccccc"
+        },
+        "call_id": "search-1",
+        "execution": "client",
+        "type": "tool_search_call"
+       },
+       {
+        "call_id": "search-1",
+        "execution": "client",
+        "status": "completed",
+        "tools": [
+         {
+          "description": "ns 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "name": "auriga",
+          "tools": [
+           {
+            "description": "Read sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "name": "fixture_read",
+            "parameters": {
+             "properties": {
+              "value_sha256": {
+               "description": "digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+               "type": "string"
+              }
+             },
+             "type": "object"
+            },
+            "type": "function"
+           }
+          ],
+          "type": "namespace"
+         }
+        ],
+        "type": "tool_search_output"
+       },
+       {
+        "content": [
+         {
+          "text": "I will act on action-dddddddddddddddddddddddd",
+          "type": "output_text"
+         },
+         {
+          "refusal": "no 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "type": "refusal"
+         }
+        ],
+        "role": "assistant",
+        "type": "message"
+       },
+       {
+        "encrypted_content": "opaque-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "id": "cmp_33333333333333333333",
+        "type": "compaction"
+       }
+      ],
+      "instructions": "Base instructions sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef keep 0.765 m and artifact:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb",
+      "metadata": {
+       "note": "sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      },
+      "model": "gpt-fixture",
+      "prompt_cache_key": "thread-99999999999999999999999999999999",
+      "reasoning": {
+       "effort": "high",
+       "summary": "auto"
+      },
+      "store": false,
+      "stream": true,
+      "text": {
+       "format": {
+        "name": "answer",
+        "schema": {
+         "properties": {
+          "sha256": {
+           "type": "string"
+          }
+         },
+         "type": "object"
+        },
+        "strict": true,
+        "type": "json_schema"
+       },
+       "verbosity": "low"
+      },
+      "tools": [
+       {
+        "description": "Move. build_sha=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "name": "robot_move",
+        "parameters": {
+         "properties": {
+          "commit": {
+           "type": "string"
+          },
+          "x_m": {
+           "description": "metres",
+           "type": "number"
+          }
+         },
+         "type": "object"
+        },
+        "type": "function"
+       },
+       {
+        "description": "deferred",
+        "name": "auriga",
+        "tools": [
+         {
+          "description": "Read sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "name": "fixture_read",
+          "parameters": {
+           "properties": {
+            "value_sha256": {
+             "description": "digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+             "type": "string"
+            }
+           },
+           "type": "object"
+          },
+          "type": "function"
+         }
+        ],
+        "type": "namespace"
+       },
+       {
+        "description": "Run code digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "format": {
+         "definition": "start: /.+/",
+         "syntax": "lark",
+         "type": "grammar"
+        },
+        "name": "program",
+        "type": "custom"
+       },
+       {
+        "type": "local_shell"
+       },
+       {
+        "environment": {
+         "type": "local"
+        },
+        "type": "shell"
+       },
+       {
+        "description": "search 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "execution": "client",
+        "type": "tool_search"
+       }
+      ]
+     }
+    }
+   ],
+   "input_unchanged": true,
+   "output": {
+    "include": [
+     "reasoning.encrypted_content"
+    ],
+    "input": [
+     {
+      "content": [
+       {
+        "text": "dev text  ref artifact:ref_1 clock clock_1",
+        "type": "input_text"
+       }
+      ],
+      "role": "developer",
+      "type": "message"
+     },
+     {
+      "content": [
+       {
+        "text": "look at obs_1",
+        "type": "input_text"
+       },
+       {
+        "detail": "high",
+        "image_url": "data:image/png;base64,AAAA0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "type": "input_image"
+       }
+      ],
+      "role": "user",
+      "type": "message"
+     },
+     {
+      "encrypted_content": "gAAAA0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "id": "rs_ffffffffffffffffffffffffffffffffffffffff",
+      "summary": [
+       {
+        "text": "thinking about act_1 ",
+        "type": "summary_text"
+       }
+      ],
+      "type": "reasoning"
+     },
+     {
+      "arguments": "{\"note\":\"\",\"observation_id\":\"obs_1\"}",
+      "call_id": "call_222222222222222222222222",
+      "id": "fc_11111111111111111111111111111111",
+      "name": "robot_observe",
+      "type": "function_call"
+     },
+     {
+      "call_id": "call_222222222222222222222222",
+      "output": [
+       {
+        "text": "{\"artifact\":\"artifact:ref_1\",\"bundle\":{\"clock\":\"clock_1\",\"observation_id\":\"obs_1\"}}",
+        "type": "input_text"
+       },
+       {
+        "image_url": "data:image/png;base64,BBBB",
+        "type": "input_image"
+       }
+      ],
+      "type": "function_call_output"
+     },
+     {
+      "call_id": "call_3",
+      "input": "print('artifact:ref_1')  # ",
+      "name": "program",
+      "type": "custom_tool_call"
+     },
+     {
+      "call_id": "call_3",
+      "output": "/home/fixture/run/private/program-workspaces/w1/main.py ok  act_1",
+      "type": "custom_tool_call_output"
+     },
+     {
+      "tools": [
+       {
+        "execution": "client",
+        "type": "tool_search"
+       }
+      ],
+      "type": "additional_tools"
+     },
+     {
+      "arguments": {
+       "limit": 2,
+       "query": "robot ",
+       "ref": "obs_1"
+      },
+      "call_id": "search-1",
+      "execution": "client",
+      "type": "tool_search_call"
+     },
+     {
+      "call_id": "search-1",
+      "execution": "client",
+      "status": "completed",
+      "tools": [
+       {
+        "description": "ns ",
+        "name": "auriga",
+        "tools": [
+         {
+          "description": "Read ",
+          "name": "fixture_read",
+          "parameters": {
+           "properties": {
+            "value_sha256": {
+             "description": "",
+             "type": "string"
+            }
+           },
+           "type": "object"
+          },
+          "type": "function"
+         }
+        ],
+        "type": "namespace"
+       }
+      ],
+      "type": "tool_search_output"
+     },
+     {
+      "content": [
+       {
+        "text": "I will act on act_1",
+        "type": "output_text"
+       },
+       {
+        "refusal": "no ",
+        "type": "refusal"
+       }
+      ],
+      "role": "assistant",
+      "type": "message"
+     },
+     {
+      "encrypted_content": "opaque-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "id": "cmp_33333333333333333333",
+      "type": "compaction"
+     }
+    ],
+    "instructions": "Base instructions  keep 0.765 m and artifact:ref_1",
+    "metadata": {
+     "note": "sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    },
+    "model": "gpt-fixture",
+    "prompt_cache_key": "thread-99999999999999999999999999999999",
+    "reasoning": {
+     "effort": "high",
+     "summary": "auto"
+    },
+    "store": false,
+    "stream": true,
+    "text": {
+     "format": {
+      "name": "answer",
+      "schema": {
+       "properties": {
+        "sha256": {
+         "type": "string"
+        }
+       },
+       "type": "object"
+      },
+      "strict": true,
+      "type": "json_schema"
+     },
+     "verbosity": "low"
+    },
+    "tools": [
+     {
+      "description": "Move. ",
+      "name": "robot_move",
+      "parameters": {
+       "properties": {
+        "commit": {
+         "type": "string"
+        },
+        "x_m": {
+         "description": "metres",
+         "type": "number"
+        }
+       },
+       "type": "object"
+      },
+      "type": "function"
+     },
+     {
+      "description": "deferred",
+      "name": "auriga",
+      "tools": [
+       {
+        "description": "Read ",
+        "name": "fixture_read",
+        "parameters": {
+         "properties": {
+          "value_sha256": {
+           "description": "",
+           "type": "string"
+          }
+         },
+         "type": "object"
+        },
+        "type": "function"
+       }
+      ],
+      "type": "namespace"
+     },
+     {
+      "description": "Run code ",
+      "format": {
+       "definition": "start: /.+/",
+       "syntax": "lark",
+       "type": "grammar"
+      },
+      "name": "program",
+      "type": "custom"
+     },
+     {
+      "type": "local_shell"
+     },
+     {
+      "environment": {
+       "type": "local"
+      },
+      "type": "shell"
+     },
+     {
+      "description": "search ",
+      "execution": "client",
+      "type": "tool_search"
+     }
+    ]
+   }
+  },
+  "string_input_and_instructions": {
+   "input_unchanged": true,
+   "output": {
+    "input": "user artifact:ref_1",
+    "instructions": ""
+   }
+  }
+ }
+}

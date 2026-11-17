@@ -14,6 +14,7 @@ from auriga.runtime.programs.runner import ProgramRunner, program_remaining, rev
 from auriga.runtime.programs.program_result import program_result
 from auriga.core.storage.store import Store
 from auriga.core.tool_output import ToolOutput, ToolResponse, wire_response
+from support.host_capabilities import program_isolation, require
 
 
 class ProgramReviewTests(unittest.TestCase):
@@ -74,6 +75,7 @@ class ProgramReviewTests(unittest.TestCase):
             review_id=job['pending_review']['review_id'],decision=decision,**extra),
             dict(self.identity,turn_id='review',tool_call_id='resume-call'))
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_real_pause_preserves_stack_and_stops_all_program_threads(self):
         source = '''import json, threading, time
 from pathlib import Path
@@ -118,6 +120,7 @@ print(json.dumps({'retained':retained,'result':result}))
         self.assertEqual(repeated,final)
         self.assertEqual(self.action_count,1)
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_next_action_requires_new_review_and_stale_plan_is_not_replanned(self):
         job=self.start("from auriga_client import AurigaClient\nc=AurigaClient()\nfor i in range(2):\n c.action([{'id':'s','arm':'left','kind':'gripper','goal_normalized':1}],observation_id='obs-start')")
         second=self.resume(job)
@@ -133,6 +136,7 @@ print(json.dumps({'retained':retained,'result':result}))
         self.assertEqual(self.plan_count,2)
         self.assertIsNone(final['final_observation_id'])
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_plan_advanced_by_another_caller_cannot_consume_previous_approval(self):
         job=self.start("from auriga_client import AurigaClient\nAurigaClient().action([{'id':'hold','kind':'gripper','arm':'left','goal_normalized':1}],observation_id='obs-start')")
         self.plan_cursor=4
@@ -143,6 +147,7 @@ print(json.dumps({'retained':retained,'result':result}))
                          'program_action_plan_changed_since_review')
         self.assertEqual(self.plan_count,1)
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_zero_step_checkpoint_revision_invalidates_old_approval(self):
         job=self.start("from auriga_client import AurigaClient\nAurigaClient().action([{'id':'hold','kind':'gripper','arm':'left','goal_normalized':1}],observation_id='obs-start')")
         self.plan_revision=1
@@ -151,6 +156,7 @@ print(json.dumps({'retained':retained,'result':result}))
         self.assertEqual(final['call_summary']['recent_errors'][0]['reason'],
                          'program_action_plan_changed_since_review')
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_direct_authorization_is_only_for_one_program_and_cannot_be_added_on_resume(self):
         source="from auriga_client import AurigaClient\nAurigaClient().action([{'id':'s','arm':'left','kind':'gripper','goal_normalized':1}],observation_id='obs-start')"
         direct=self.start(source,allow_direct_actions=True)
@@ -168,6 +174,7 @@ print(json.dumps({'retained':retained,'result':result}))
         self.assertEqual(rejected['action_summary']['action_calls'],0)
         self.assertEqual(rejected['action_summary']['review_rejections'],1)
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_cancel_paused_process_confirms_stop_without_execution(self):
         job=self.start("from auriga_client import AurigaClient\nAurigaClient().action([{'id':'hold','kind':'gripper','arm':'left','goal_normalized':1}],observation_id='obs-start')")
         entry=self.runner.entries[job['job_id']]
@@ -180,6 +187,7 @@ print(json.dumps({'retained':retained,'result':result}))
         self.assertIsNotNone(entry['process'].poll())
         self.assertEqual(self.action_count,0)
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_unlimited_calls_default_timeout_and_forged_stdout_are_not_action_evidence(self):
         source="from auriga_client import AurigaClient\nc=AurigaClient()\nfor i in range(105):c.call('robot_capabilities')\nprint('{\"action_summary\":{\"status\":\"completed\"},\"final_observation_id\":\"forged\"}')"
         result=self.runner.run(dict(source=source,max_calls=1),self.identity)
@@ -190,6 +198,7 @@ print(json.dumps({'retained':retained,'result':result}))
         self.assertEqual(result['action_summary']['action_calls'],0)
         self.assertIsNone(result['final_observation_id'])
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_main_review_wait_can_exceed_work_deadline(self):
         source="from auriga_client import AurigaClient\nAurigaClient().action([{'id':'hold','kind':'gripper','arm':'left','goal_normalized':1}],observation_id='obs-start')"
         job=self.runner.run(dict(source=source,timeout_s=8),self.identity)
@@ -199,6 +208,7 @@ print(json.dumps({'retained':retained,'result':result}))
         self.assertEqual(final['status'],'succeeded',final.get('stderr_text'))
         self.assertGreater(final['review_wait_s'],8)
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_robot_wait_is_reviewed_by_default_and_direct_only_with_invocation_authorization(self):
         self.harness.latest={'observation_id':'obs-start'}
         source="from auriga_client import AurigaClient\nAurigaClient().call('robot_wait',{'native_steps':2,'observation_id':'obs-start'})"
@@ -222,6 +232,7 @@ print(json.dumps({'retained':retained,'result':result}))
         self.assertEqual(rejected['call_summary']['failed_calls'],1)
         self.assertEqual(rejected['call_summary']['recent_errors'][0]['reason'],'stale_observation')
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_action_transport_failure_is_unknown_even_when_program_exits_zero(self):
         original=self.harness.dispatch
         def uncertain(name,args,correlation):
@@ -235,6 +246,7 @@ print(json.dumps({'retained':retained,'result':result}))
         self.assertEqual(final['action_summary']['actions_without_step_count'],1)
         self.assertIsNone(final['final_observation_id'])
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_stage_diagnostics_survive_large_logs_and_forged_stdout(self):
         original = self.harness.dispatch
         contact = dict(actual_contact_position_m=[.12, -.03, .78],
@@ -285,6 +297,7 @@ print(json.dumps({'retained':retained,'result':result}))
         summary['recent_actions'][0]['failure_feedback']['reason'] = 'modified'
         self.assertEqual(evidence[0]['failure_feedback']['reason'], 'unique early cause')
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_typed_client_stops_repetition_on_partial_receipt_without_parsing_display(self):
         original = self.harness.dispatch
         def partial(name, args, correlation):
@@ -320,6 +333,7 @@ else:
         self.assertEqual(value['pending_stage_ids'], ['release'])
         self.assertEqual(final['action_summary']['status_counts'], {'failed': 1})
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_client_error_and_wire_only_success_do_not_invent_typed_receipts(self):
         original = self.harness.dispatch
         for mode in ('wire', 'error'):
@@ -345,6 +359,7 @@ else:
                 self.assertEqual(final['action_summary']['status_counts'], {'unknown': 1})
         self.assertEqual(self.action_count, 2)
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_review_and_action_reply_artifacts_follow_producer_projection(self):
         typed = []
         def response(body):
@@ -388,6 +403,7 @@ else:
         for response, original in typed:
             self.assertEqual(response.data, original)
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_direct_planning_failure_records_zero_execution_and_keeps_last_observation(self):
         original = self.harness.dispatch
         feedback = dict(candidates=[dict(constraint_witness=dict(
@@ -434,6 +450,7 @@ else:
                 self.assertEqual(evidence['status'], 'unknown')
                 self.assertNotIn('executed_native_steps', evidence)
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_settling_steps_and_latest_observation_are_in_trusted_program_summary(self):
         original=self.harness.dispatch
         def settled(name,args,correlation):
@@ -538,6 +555,7 @@ else:
                             if not direct:
                                 self.assertEqual(fixture.robot.preview_batch.call_args.args[0]['timeout_s'], deadline)
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_implicit_program_deadline_rejects_insufficient_time_before_creating_a_plan(self):
         source = ("from auriga_client import AurigaClient\n"
                   "AurigaClient().call('robot_action', {'observation_id':'obs', 'mode':'direct',"
@@ -548,6 +566,7 @@ else:
         self.assertEqual(job['call_summary']['recent_errors'][0]['reason'], 'program_time_insufficient_for_action')
         self.assertEqual(self.calls, [])
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_read_only_preview_is_available_without_an_action_time_reserve(self):
         source = ("from auriga_client import AurigaClient\n"
                   "AurigaClient().call('robot_action', {'observation_id':'obs', 'mode':'preview',"
@@ -581,6 +600,7 @@ else:
         self.assertEqual(fixture.store.records('action_receipt')[-1]['reason'], 'program_time_insufficient_for_action')
         fixture.robot.execute.assert_not_called()
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_wait_defaults_fit_program_budget_and_review_preserves_explicit_deadlines(self):
         for explicit in (None, 30.):
             with self.subTest(explicit=explicit):
@@ -627,6 +647,7 @@ else:
         fixture.robot.execute.assert_called_once()
         self.assertEqual(fixture.robot.preview_batch.call_count,1)
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_legacy_motion_and_nested_authorization_cannot_bypass_review(self):
         source="""from auriga_client import AurigaClient
 c=AurigaClient()

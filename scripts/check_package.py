@@ -52,6 +52,13 @@ assert config.features.held_perception is True
 assert config.features.grip_non_empty_min_aperture_m == 0.0015
 assert config.features.grip_rigid_min_aperture_m == 0.002
 assert config.features.grip_wide_min_aperture_m == 0.003
+assert config.agent.backend == "codex"
+assert "agent" not in config.to_dict()
+from auriga.cortex.agents.factory import create_session
+from auriga.cortex.agents.claude_code.session import ClaudeCodeSession
+from auriga.cortex.session.wire.anthropic_messages import AnthropicMessagesWire
+assert AnthropicMessagesWire().name == "anthropic_messages"
+assert Config.from_dict({"agent": {"backend": "claude_code"}}).agent.backend == "claude_code"
 archived = Config.from_dict({"version": 1})
 assert (archived.model.name, archived.model.effort) == ("gpt-6-astra", "high")
 assert archived.model.codex_home == str(Path("~/.codex").expanduser())

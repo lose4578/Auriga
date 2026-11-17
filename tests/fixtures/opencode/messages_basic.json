@@ -1,0 +1,1364 @@
+{
+ "capture": "spike S6 basic flow, opencode 1.19.5; GET /session/{id}/message shape, read from the run's opencode.db after the spike ended (rows hydrated like MessageV2.hydrate); every session was idle at capture (status_after)",
+ "sanitised": [
+  "run paths -> /runs/<scenario>",
+  "loopback ports -> 127.0.0.1:0",
+  "image data URLs -> 1-pixel placeholder",
+  "response date/server headers dropped",
+  "3 KiB filler tool outputs trimmed",
+  "bash `env` output replaced by a neutral line"
+ ],
+ "evidence": [
+  "scratch/s-c/evidence/s6-anthropic-basic",
+  "scratch/s-c/evidence/s6-responses-basic"
+ ],
+ "sessions": {
+  "anthropic_two_turns": {
+   "wire": "anthropic_messages",
+   "session_id": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+   "status_after": {},
+   "messages": [
+    {
+     "info": {
+      "role": "user",
+      "time": {
+       "created": 1794338144288
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "relay",
+       "modelID": "claude-sonnet-4-5"
+      },
+      "system": "AURIGA-INSTRUCTIONS-BEGIN\nYou control a robot. Tool names are bare registry names.\nAURIGA-INSTRUCTIONS-END",
+      "id": "msg_1c6e34020001Ws20Im03x9a0NU",
+      "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH"
+     },
+     "parts": [
+      {
+       "type": "text",
+       "text": "USER-TURN-ONE: please work.",
+       "id": "prt_1c6e34022001dZvNmvu0gHwos0",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e34020001Ws20Im03x9a0NU"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6e34020001Ws20Im03x9a0NU",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s6-anthropic-basic/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 1284,
+       "input": 1001,
+       "output": 51,
+       "reasoning": 0,
+       "cache": {
+        "write": 31,
+        "read": 201
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794338144296,
+       "completed": 1794338144922
+      },
+      "finish": "tool-calls",
+      "id": "msg_1c6e3402800164I48TrH6YF9oA",
+      "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6e34289001gMfeFOcpEEa7FB",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e3402800164I48TrH6YF9oA"
+      },
+      {
+       "type": "text",
+       "text": "Calling fast.",
+       "time": {
+        "start": 1794338144907,
+        "end": 1794338144909
+       },
+       "id": "prt_1c6e3428b001CNVujjjn2PkWOh",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e3402800164I48TrH6YF9oA"
+      },
+      {
+       "type": "tool",
+       "tool": "auriga_fast",
+       "callID": "call_fake_0_0",
+       "state": {
+        "status": "completed",
+        "input": {
+         "note": "hello"
+        },
+        "output": "fast result: hello",
+        "metadata": {
+         "truncated": false
+        },
+        "title": "",
+        "time": {
+         "start": 1794338144914,
+         "end": 1794338144918
+        }
+       },
+       "id": "prt_1c6e3428e001gAOrn7UGxsAmbB",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e3402800164I48TrH6YF9oA"
+      },
+      {
+       "reason": "tool-calls",
+       "type": "step-finish",
+       "tokens": {
+        "total": 1284,
+        "input": 1001,
+        "output": 51,
+        "reasoning": 0,
+        "cache": {
+         "write": 31,
+         "read": 201
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6e34298001ugQ5mQsJGYmz5m",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e3402800164I48TrH6YF9oA"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6e34020001Ws20Im03x9a0NU",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s6-anthropic-basic/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 1288,
+       "input": 1002,
+       "output": 52,
+       "reasoning": 0,
+       "cache": {
+        "write": 32,
+        "read": 202
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794338144924,
+       "completed": 1794338145040
+      },
+      "finish": "tool-calls",
+      "id": "msg_1c6e3429c001Ba8LHom8ggz6ms",
+      "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6e342f3001PA5mOSoll8c5Z9",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e3429c001Ba8LHom8ggz6ms"
+      },
+      {
+       "type": "tool",
+       "tool": "auriga_image",
+       "callID": "call_fake_1_0",
+       "state": {
+        "status": "completed",
+        "input": {
+         "label": "cam"
+        },
+        "output": "image cam follows",
+        "metadata": {
+         "truncated": false
+        },
+        "title": "",
+        "time": {
+         "start": 1794338145014,
+         "end": 1794338145036
+        },
+        "attachments": [
+         {
+          "type": "file",
+          "mime": "image/png",
+          "url": "data:image/png;base64,iVBORw0KGgo=",
+          "id": "prt_1c6e342ff001Xi5K1O3mXTeja3",
+          "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+          "messageID": "msg_1c6e3429c001Ba8LHom8ggz6ms"
+         }
+        ]
+       },
+       "id": "prt_1c6e342f4001YI4njZGfd2P267",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e3429c001Ba8LHom8ggz6ms"
+      },
+      {
+       "reason": "tool-calls",
+       "type": "step-finish",
+       "tokens": {
+        "total": 1288,
+        "input": 1002,
+        "output": 52,
+        "reasoning": 0,
+        "cache": {
+         "write": 32,
+         "read": 202
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6e3430e001A9fKwZE1INfjpx",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e3429c001Ba8LHom8ggz6ms"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6e34020001Ws20Im03x9a0NU",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s6-anthropic-basic/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 1292,
+       "input": 1003,
+       "output": 53,
+       "reasoning": 0,
+       "cache": {
+        "write": 33,
+        "read": 203
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794338145041,
+       "completed": 1794338145056
+      },
+      "finish": "tool-calls",
+      "id": "msg_1c6e34311001BOpiibscc07KaX",
+      "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6e343180016g80fg1s0VsL1A",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e34311001BOpiibscc07KaX"
+      },
+      {
+       "type": "tool",
+       "tool": "auriga_fail",
+       "callID": "call_fake_2_0",
+       "state": {
+        "status": "error",
+        "input": {},
+        "error": "tool failed: planted failure text",
+        "time": {
+         "start": 1794338145052,
+         "end": 1794338145054
+        }
+       },
+       "id": "prt_1c6e3431a001axpXDRW5ZK2shU",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e34311001BOpiibscc07KaX"
+      },
+      {
+       "reason": "tool-calls",
+       "type": "step-finish",
+       "tokens": {
+        "total": 1292,
+        "input": 1003,
+        "output": 53,
+        "reasoning": 0,
+        "cache": {
+         "write": 33,
+         "read": 203
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6e3431f001wHGHpOa0C2cBb4",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e34311001BOpiibscc07KaX"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6e34020001Ws20Im03x9a0NU",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s6-anthropic-basic/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 1296,
+       "input": 1004,
+       "output": 54,
+       "reasoning": 0,
+       "cache": {
+        "write": 34,
+        "read": 204
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794338145056,
+       "completed": 1794338145071
+      },
+      "finish": "tool-calls",
+      "id": "msg_1c6e34320001PDlLQmDuZcp3Yu",
+      "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6e34326001levs7SQoMMZgR3",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e34320001PDlLQmDuZcp3Yu"
+      },
+      {
+       "type": "tool",
+       "tool": "auriga_fast",
+       "callID": "call_fake_3_0",
+       "state": {
+        "status": "completed",
+        "input": {
+         "note": "par1"
+        },
+        "output": "fast result: par1",
+        "metadata": {
+         "truncated": false
+        },
+        "title": "",
+        "time": {
+         "start": 1794338145065,
+         "end": 1794338145068
+        }
+       },
+       "id": "prt_1c6e34328001yEv6T7i5183BK3",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e34320001PDlLQmDuZcp3Yu"
+      },
+      {
+       "type": "tool",
+       "tool": "auriga_image",
+       "callID": "call_fake_3_1",
+       "state": {
+        "status": "completed",
+        "input": {
+         "label": "par2"
+        },
+        "output": "image par2 follows",
+        "metadata": {
+         "truncated": false
+        },
+        "title": "",
+        "time": {
+         "start": 1794338145067,
+         "end": 1794338145070
+        },
+        "attachments": [
+         {
+          "type": "file",
+          "mime": "image/png",
+          "url": "data:image/png;base64,iVBORw0KGgo=",
+          "id": "prt_1c6e3432d0017pmq4bvh3wb3Ge",
+          "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+          "messageID": "msg_1c6e34320001PDlLQmDuZcp3Yu"
+         }
+        ]
+       },
+       "id": "prt_1c6e3432a001DNHCQMQOsKrCoN",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e34320001PDlLQmDuZcp3Yu"
+      },
+      {
+       "reason": "tool-calls",
+       "type": "step-finish",
+       "tokens": {
+        "total": 1296,
+        "input": 1004,
+        "output": 54,
+        "reasoning": 0,
+        "cache": {
+         "write": 34,
+         "read": 204
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6e3432e001QL060uMtR8PBoF",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e34320001PDlLQmDuZcp3Yu"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6e34020001Ws20Im03x9a0NU",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s6-anthropic-basic/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 1300,
+       "input": 1005,
+       "output": 55,
+       "reasoning": 0,
+       "cache": {
+        "write": 35,
+        "read": 205
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794338145072,
+       "completed": 1794338145109
+      },
+      "finish": "tool-calls",
+      "id": "msg_1c6e34330001NUUw6tSD14eE4c",
+      "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6e3433500152gk0FF9gOVCrh",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e34330001NUUw6tSD14eE4c"
+      },
+      {
+       "type": "tool",
+       "tool": "bash",
+       "callID": "call_fake_4_0",
+       "state": {
+        "status": "completed",
+        "input": {
+         "command": "env | sort",
+         "description": "Dump environment"
+        },
+        "output": "AGENT=1\nOPENCODE=1\n",
+        "metadata": {
+         "output": "AGENT=1\nOPENCODE=1\n",
+         "exit": 0,
+         "truncated": false
+        },
+        "title": "env | sort",
+        "time": {
+         "start": 1794338145080,
+         "end": 1794338145107
+        }
+       },
+       "id": "prt_1c6e34336001O6vIvW16MeYTVQ",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e34330001NUUw6tSD14eE4c"
+      },
+      {
+       "reason": "tool-calls",
+       "type": "step-finish",
+       "tokens": {
+        "total": 1300,
+        "input": 1005,
+        "output": 55,
+        "reasoning": 0,
+        "cache": {
+         "write": 35,
+         "read": 205
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6e34354001xFNX11YgVUqI7b",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e34330001NUUw6tSD14eE4c"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6e34020001Ws20Im03x9a0NU",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s6-anthropic-basic/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 1304,
+       "input": 1006,
+       "output": 56,
+       "reasoning": 0,
+       "cache": {
+        "write": 36,
+        "read": 206
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794338145110,
+       "completed": 1794338145124
+      },
+      "finish": "stop",
+      "id": "msg_1c6e34356001TTPrcyfc5r4xtk",
+      "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6e3435f001PQacO5xRgiTrmO",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e34356001TTPrcyfc5r4xtk"
+      },
+      {
+       "type": "text",
+       "text": "FINAL-ANSWER-ONE",
+       "time": {
+        "start": 1794338145120,
+        "end": 1794338145121
+       },
+       "id": "prt_1c6e34360001wCbBZXyfB6RdYl",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e34356001TTPrcyfc5r4xtk"
+      },
+      {
+       "reason": "stop",
+       "type": "step-finish",
+       "tokens": {
+        "total": 1304,
+        "input": 1006,
+        "output": 56,
+        "reasoning": 0,
+        "cache": {
+         "write": 36,
+         "read": 206
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6e34362001yxhgq6vERp54n2",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e34356001TTPrcyfc5r4xtk"
+      }
+     ]
+    },
+    {
+     "info": {
+      "role": "user",
+      "time": {
+       "created": 1794338145522
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "relay",
+       "modelID": "claude-sonnet-4-5"
+      },
+      "system": "AURIGA-INSTRUCTIONS-BEGIN\nYou control a robot. Tool names are bare registry names.\nAURIGA-INSTRUCTIONS-END",
+      "id": "msg_1c6e344f2001GZvN7Lm4rcaZCD",
+      "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH"
+     },
+     "parts": [
+      {
+       "type": "text",
+       "text": "USER-TURN-TWO: continue.",
+       "id": "prt_1c6e344f3001HEuO7c9049IwDY",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e344f2001GZvN7Lm4rcaZCD"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6e344f2001GZvN7Lm4rcaZCD",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s6-anthropic-basic/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 1308,
+       "input": 1007,
+       "output": 57,
+       "reasoning": 0,
+       "cache": {
+        "write": 37,
+        "read": 207
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794338145526,
+       "completed": 1794338145536
+      },
+      "finish": "stop",
+      "id": "msg_1c6e344f6001xFU2Tmh3q2mitx",
+      "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6e344fb001ySrcMhNyPOQ80R",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e344f6001xFU2Tmh3q2mitx"
+      },
+      {
+       "type": "text",
+       "text": "FINAL-ANSWER-TWO",
+       "time": {
+        "start": 1794338145532,
+        "end": 1794338145533
+       },
+       "id": "prt_1c6e344fc001kuBcOMM25fdrZd",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e344f6001xFU2Tmh3q2mitx"
+      },
+      {
+       "reason": "stop",
+       "type": "step-finish",
+       "tokens": {
+        "total": 1308,
+        "input": 1007,
+        "output": 57,
+        "reasoning": 0,
+        "cache": {
+         "write": 37,
+         "read": 207
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6e344fe001zYiXwC1WX2x2XL",
+       "sessionID": "ses_e391cbfe8ffeboNBNQV1nzPAuH",
+       "messageID": "msg_1c6e344f6001xFU2Tmh3q2mitx"
+      }
+     ]
+    }
+   ]
+  },
+  "responses_two_turns": {
+   "wire": "openai_responses",
+   "session_id": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+   "status_after": {},
+   "messages": [
+    {
+     "info": {
+      "role": "user",
+      "time": {
+       "created": 1794338284175
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "relay",
+       "modelID": "gpt-6-astra"
+      },
+      "system": "AURIGA-INSTRUCTIONS-BEGIN\nYou control a robot. Tool names are bare registry names.\nAURIGA-INSTRUCTIONS-END",
+      "id": "msg_1c6e5628f001cwPhfRHDfe7fTq",
+      "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr"
+     },
+     "parts": [
+      {
+       "type": "text",
+       "text": "USER-TURN-ONE: please work.",
+       "id": "prt_1c6e56291001II0Fiwn9pUpH0D",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e5628f001cwPhfRHDfe7fTq"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6e5628f001cwPhfRHDfe7fTq",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s6-responses-basic/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 1253,
+       "input": 1001,
+       "output": 43,
+       "reasoning": 8,
+       "cache": {
+        "write": 0,
+        "read": 201
+       }
+      },
+      "modelID": "gpt-6-astra",
+      "providerID": "relay",
+      "time": {
+       "created": 1794338284183,
+       "completed": 1794338284963
+      },
+      "finish": "tool-calls",
+      "id": "msg_1c6e56297001RZw9AtwLdAWVgV",
+      "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6e5658c001psUgmRv6QE3Mgg",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e56297001RZw9AtwLdAWVgV"
+      },
+      {
+       "type": "text",
+       "text": "Calling fast.",
+       "time": {
+        "start": 1794338284941,
+        "end": 1794338284944
+       },
+       "metadata": {
+        "openai": {
+         "itemId": "msg_fake_0"
+        }
+       },
+       "id": "prt_1c6e5658d001crpMS39Nb5Lj8V",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e56297001RZw9AtwLdAWVgV"
+      },
+      {
+       "type": "tool",
+       "tool": "auriga_fast",
+       "callID": "call_fake_0_0",
+       "state": {
+        "status": "completed",
+        "input": {
+         "note": "hello"
+        },
+        "output": "fast result: hello",
+        "metadata": {
+         "truncated": false
+        },
+        "title": "",
+        "time": {
+         "start": 1794338284950,
+         "end": 1794338284953
+        }
+       },
+       "metadata": {
+        "openai": {
+         "itemId": "fc_fake_0_0"
+        }
+       },
+       "id": "prt_1c6e565910015tJnxglJm2Aft3",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e56297001RZw9AtwLdAWVgV"
+      },
+      {
+       "reason": "tool-calls",
+       "type": "step-finish",
+       "tokens": {
+        "total": 1253,
+        "input": 1001,
+        "output": 43,
+        "reasoning": 8,
+        "cache": {
+         "write": 0,
+         "read": 201
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6e5659f001PjCY2Ka60IVNwp",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e56297001RZw9AtwLdAWVgV"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6e5628f001cwPhfRHDfe7fTq",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s6-responses-basic/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 1256,
+       "input": 1002,
+       "output": 43,
+       "reasoning": 9,
+       "cache": {
+        "write": 0,
+        "read": 202
+       }
+      },
+      "modelID": "gpt-6-astra",
+      "providerID": "relay",
+      "time": {
+       "created": 1794338284965,
+       "completed": 1794338285096
+      },
+      "finish": "tool-calls",
+      "id": "msg_1c6e565a5001gpP7d9y4Rg7AGj",
+      "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6e565fb001J7ys2vtDD9qKv7",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e565a5001gpP7d9y4Rg7AGj"
+      },
+      {
+       "type": "tool",
+       "tool": "auriga_image",
+       "callID": "call_fake_1_0",
+       "state": {
+        "status": "completed",
+        "input": {
+         "label": "cam"
+        },
+        "output": "image cam follows",
+        "metadata": {
+         "truncated": false
+        },
+        "title": "",
+        "time": {
+         "start": 1794338285055,
+         "end": 1794338285085
+        },
+        "attachments": [
+         {
+          "type": "file",
+          "mime": "image/png",
+          "url": "data:image/png;base64,iVBORw0KGgo=",
+          "id": "prt_1c6e56601001yx1YUXDR3qllPX",
+          "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+          "messageID": "msg_1c6e565a5001gpP7d9y4Rg7AGj"
+         }
+        ]
+       },
+       "metadata": {
+        "openai": {
+         "itemId": "fc_fake_1_0"
+        }
+       },
+       "id": "prt_1c6e565fd001J06bxJmBZAPOW0",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e565a5001gpP7d9y4Rg7AGj"
+      },
+      {
+       "reason": "tool-calls",
+       "type": "step-finish",
+       "tokens": {
+        "total": 1256,
+        "input": 1002,
+        "output": 43,
+        "reasoning": 9,
+        "cache": {
+         "write": 0,
+         "read": 202
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6e56621001MSixW8osa6RJ4B",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e565a5001gpP7d9y4Rg7AGj"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6e5628f001cwPhfRHDfe7fTq",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s6-responses-basic/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 1259,
+       "input": 1003,
+       "output": 43,
+       "reasoning": 10,
+       "cache": {
+        "write": 0,
+        "read": 203
+       }
+      },
+      "modelID": "gpt-6-astra",
+      "providerID": "relay",
+      "time": {
+       "created": 1794338285098,
+       "completed": 1794338285130
+      },
+      "finish": "tool-calls",
+      "id": "msg_1c6e5662a001KxG7hFnRnPPa74",
+      "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6e56640001EQvMKmxpxTT5M3",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e5662a001KxG7hFnRnPPa74"
+      },
+      {
+       "type": "tool",
+       "tool": "auriga_fail",
+       "callID": "call_fake_2_0",
+       "state": {
+        "status": "error",
+        "input": {},
+        "error": "tool failed: planted failure text",
+        "time": {
+         "start": 1794338285125,
+         "end": 1794338285128
+        }
+       },
+       "metadata": {
+        "openai": {
+         "itemId": "fc_fake_2_0"
+        }
+       },
+       "id": "prt_1c6e56643001hM1QmKOWaoiJo3",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e5662a001KxG7hFnRnPPa74"
+      },
+      {
+       "reason": "tool-calls",
+       "type": "step-finish",
+       "tokens": {
+        "total": 1259,
+        "input": 1003,
+        "output": 43,
+        "reasoning": 10,
+        "cache": {
+         "write": 0,
+         "read": 203
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6e56649001pVmHgE6w1gd0bk",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e5662a001KxG7hFnRnPPa74"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6e5628f001cwPhfRHDfe7fTq",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s6-responses-basic/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 1262,
+       "input": 1004,
+       "output": 43,
+       "reasoning": 11,
+       "cache": {
+        "write": 0,
+        "read": 204
+       }
+      },
+      "modelID": "gpt-6-astra",
+      "providerID": "relay",
+      "time": {
+       "created": 1794338285131,
+       "completed": 1794338285152
+      },
+      "finish": "tool-calls",
+      "id": "msg_1c6e5664b001B5kGbWTx2owJ2i",
+      "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6e56652001diHsG8NoW2NTBn",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e5664b001B5kGbWTx2owJ2i"
+      },
+      {
+       "type": "tool",
+       "tool": "auriga_fast",
+       "callID": "call_fake_3_0",
+       "state": {
+        "status": "completed",
+        "input": {
+         "note": "par1"
+        },
+        "output": "fast result: par1",
+        "metadata": {
+         "truncated": false
+        },
+        "title": "",
+        "time": {
+         "start": 1794338285142,
+         "end": 1794338285148
+        }
+       },
+       "metadata": {
+        "openai": {
+         "itemId": "fc_fake_3_0"
+        }
+       },
+       "id": "prt_1c6e56653001DfCFMPb1ABDRgt",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e5664b001B5kGbWTx2owJ2i"
+      },
+      {
+       "type": "tool",
+       "tool": "auriga_image",
+       "callID": "call_fake_3_1",
+       "state": {
+        "status": "completed",
+        "input": {
+         "label": "par2"
+        },
+        "output": "image par2 follows",
+        "metadata": {
+         "truncated": false
+        },
+        "title": "",
+        "time": {
+         "start": 1794338285146,
+         "end": 1794338285150
+        },
+        "attachments": [
+         {
+          "type": "file",
+          "mime": "image/png",
+          "url": "data:image/png;base64,iVBORw0KGgo=",
+          "id": "prt_1c6e5665d001a4QA3IUEDJNqO0",
+          "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+          "messageID": "msg_1c6e5664b001B5kGbWTx2owJ2i"
+         }
+        ]
+       },
+       "metadata": {
+        "openai": {
+         "itemId": "fc_fake_3_1"
+        }
+       },
+       "id": "prt_1c6e56657001bLANpeFibKPqFO",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e5664b001B5kGbWTx2owJ2i"
+      },
+      {
+       "reason": "tool-calls",
+       "type": "step-finish",
+       "tokens": {
+        "total": 1262,
+        "input": 1004,
+        "output": 43,
+        "reasoning": 11,
+        "cache": {
+         "write": 0,
+         "read": 204
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6e5665f001CmwfJL7ZQKiey5",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e5664b001B5kGbWTx2owJ2i"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6e5628f001cwPhfRHDfe7fTq",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s6-responses-basic/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 1265,
+       "input": 1005,
+       "output": 43,
+       "reasoning": 12,
+       "cache": {
+        "write": 0,
+        "read": 205
+       }
+      },
+      "modelID": "gpt-6-astra",
+      "providerID": "relay",
+      "time": {
+       "created": 1794338285153,
+       "completed": 1794338285206
+      },
+      "finish": "tool-calls",
+      "id": "msg_1c6e56661001BzUn66l26RpuKg",
+      "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6e566680015fqYL1Gtd2GffF",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e56661001BzUn66l26RpuKg"
+      },
+      {
+       "type": "tool",
+       "tool": "bash",
+       "callID": "call_fake_4_0",
+       "state": {
+        "status": "completed",
+        "input": {
+         "command": "env | sort",
+         "description": "Dump environment"
+        },
+        "output": "AGENT=1\nOPENCODE=1\n",
+        "metadata": {
+         "output": "AGENT=1\nOPENCODE=1\n",
+         "exit": 0,
+         "truncated": false
+        },
+        "title": "env | sort",
+        "time": {
+         "start": 1794338285163,
+         "end": 1794338285203
+        }
+       },
+       "metadata": {
+        "openai": {
+         "itemId": "fc_fake_4_0"
+        }
+       },
+       "id": "prt_1c6e56668002UFsJ2kQYkRu2ze",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e56661001BzUn66l26RpuKg"
+      },
+      {
+       "reason": "tool-calls",
+       "type": "step-finish",
+       "tokens": {
+        "total": 1265,
+        "input": 1005,
+        "output": 43,
+        "reasoning": 12,
+        "cache": {
+         "write": 0,
+         "read": 205
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6e56694001Jy3aa7qnWOwRti",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e56661001BzUn66l26RpuKg"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6e5628f001cwPhfRHDfe7fTq",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s6-responses-basic/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 1268,
+       "input": 1006,
+       "output": 43,
+       "reasoning": 13,
+       "cache": {
+        "write": 0,
+        "read": 206
+       }
+      },
+      "modelID": "gpt-6-astra",
+      "providerID": "relay",
+      "time": {
+       "created": 1794338285206,
+       "completed": 1794338285230
+      },
+      "finish": "stop",
+      "id": "msg_1c6e56696001zb4YH1zzg95ync",
+      "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6e566a60013SWGZ5eNG1NvuD",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e56696001zb4YH1zzg95ync"
+      },
+      {
+       "type": "text",
+       "text": "FINAL-ANSWER-ONE",
+       "time": {
+        "start": 1794338285225,
+        "end": 1794338285227
+       },
+       "metadata": {
+        "openai": {
+         "itemId": "msg_fake_5"
+        }
+       },
+       "id": "prt_1c6e566a8001MRwIqyucrakR31",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e56696001zb4YH1zzg95ync"
+      },
+      {
+       "reason": "stop",
+       "type": "step-finish",
+       "tokens": {
+        "total": 1268,
+        "input": 1006,
+        "output": 43,
+        "reasoning": 13,
+        "cache": {
+         "write": 0,
+         "read": 206
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6e566ad001BVFawUOQh9YXda",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e56696001zb4YH1zzg95ync"
+      }
+     ]
+    },
+    {
+     "info": {
+      "role": "user",
+      "time": {
+       "created": 1794338285624
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "relay",
+       "modelID": "gpt-6-astra"
+      },
+      "system": "AURIGA-INSTRUCTIONS-BEGIN\nYou control a robot. Tool names are bare registry names.\nAURIGA-INSTRUCTIONS-END",
+      "id": "msg_1c6e568380010Nr1kzqRdH7v2W",
+      "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr"
+     },
+     "parts": [
+      {
+       "type": "text",
+       "text": "USER-TURN-TWO: continue.",
+       "id": "prt_1c6e56838002ymUHKUZB11HAw2",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e568380010Nr1kzqRdH7v2W"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6e568380010Nr1kzqRdH7v2W",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s6-responses-basic/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 1271,
+       "input": 1007,
+       "output": 43,
+       "reasoning": 14,
+       "cache": {
+        "write": 0,
+        "read": 207
+       }
+      },
+      "modelID": "gpt-6-astra",
+      "providerID": "relay",
+      "time": {
+       "created": 1794338285627,
+       "completed": 1794338285636
+      },
+      "finish": "stop",
+      "id": "msg_1c6e5683b001V4uBYvcnfWp6np",
+      "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6e56841001vAm4mxRTcJbpco",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e5683b001V4uBYvcnfWp6np"
+      },
+      {
+       "type": "text",
+       "text": "FINAL-ANSWER-TWO",
+       "time": {
+        "start": 1794338285633,
+        "end": 1794338285634
+       },
+       "metadata": {
+        "openai": {
+         "itemId": "msg_fake_6"
+        }
+       },
+       "id": "prt_1c6e56841002xD6L6bQHwAXEkj",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e5683b001V4uBYvcnfWp6np"
+      },
+      {
+       "reason": "stop",
+       "type": "step-finish",
+       "tokens": {
+        "total": 1271,
+        "input": 1007,
+        "output": 43,
+        "reasoning": 14,
+        "cache": {
+         "write": 0,
+         "read": 207
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6e56843001Aa2QhNdYZpwXn7",
+       "sessionID": "ses_e391a9d7dffeEkHeTiG0BEFnbr",
+       "messageID": "msg_1c6e5683b001V4uBYvcnfWp6np"
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

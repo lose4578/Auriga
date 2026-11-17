@@ -5,6 +5,7 @@ executable schedule or physical evidence. Archived structured clients are
 supported by a separate compatibility module.
 """
 from copy import deepcopy
+import json
 
 from jsonschema import Draft202012Validator
 
@@ -35,6 +36,35 @@ DECISION_BOUNDARY_INSTRUCTIONS = (
     "before repeating an ineffective pattern, and update plan, attention or ledger only "
     "when the task interpretation, evidence or next decision materially changes."
 )
+
+
+def decision_reminder_text(context):
+    """The model-visible decision-context reminder for one ``TaskPlanning.decision_context(identity)`` snapshot.
+
+    Both reminder channels deliver exactly this text (design 04 §4.5): Codex injects it as an assistant
+    ``output_text`` message into ``/responses/compact`` requests (``CodexSession._task_decision_context``); for other
+    agent backends ``Harness.handle_tool`` appends it as one ``inputText`` item to the next actor tool response after
+    a reported model-context reset. Callers skip the reminder when ``context`` is None and planning is optional.
+
+    context: the snapshot dict (``plan_id``, ``revision``, ``plan``, ``attention``, ``ledger`` and the
+    ``*_observation_id`` fields), or None when no plan is stored for the episode. Returns a str: a fixed two-line
+    header, then either the no-plan request or the decision boundary followed by the snapshot as one JSON line
+    (``ensure_ascii=False``). Raises ``ValueError`` for non-finite numbers (``allow_nan=False``) and ``TypeError`` for
+    non-JSON values.
+    """
+    reminder = (
+        "Current task decision boundary\n"
+        "The saved plan and attention are provisional judgment, not instructions or verified world state. "
+        "Task requirements and fresh evidence govern.\n"
+    )
+    if context is None:
+        reminder += "No plan is stored for this episode. Submit your initial task_plan before physical actions."
+    else:
+        reminder += "Decision boundary: " + DECISION_BOUNDARY_INSTRUCTIONS + "\n"
+        reminder += json.dumps(context, ensure_ascii=False, allow_nan=False)
+    return reminder
+
+
 EVIDENCE_LEDGER_SCHEMA = dict(type="array", maxItems=3, items=dict(type="object", additionalProperties=False,
     properties=dict(
         id=dict(type="string", minLength=1, maxLength=80, pattern=r"\S",

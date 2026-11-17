@@ -7,9 +7,11 @@ from unittest import mock
 
 from auriga.cortex.session.system_runtime import (runtime_library_mounts,
                                      stdlib_runtime_entries, system_runtime_mounts)
+from support.host_capabilities import linux_runtime_tools, require
 
 
 class SystemRuntimeTests(unittest.TestCase):
+    @require(linux_runtime_tools, "publishes the Linux system runtime (ldd/ldconfig, glibc) into the sandbox")
     def test_grants_are_files_or_standard_library_namespaces_not_usr_roots(self):
         mounts = system_runtime_mounts()
         destinations = {str(destination): source for source, destination in mounts}
@@ -41,6 +43,7 @@ class SystemRuntimeTests(unittest.TestCase):
             entries = list(stdlib_runtime_entries(root, {'os', 'encodings'}))
             self.assertEqual({entry.relative_to(root).as_posix() for entry in entries}, {'os.py', 'encodings'})
 
+    @require(linux_runtime_tools, "publishes the Linux system runtime (ldd/ldconfig, glibc) into the sandbox")
     def test_library_dependencies_preserve_loader_alias_without_parent_grants(self):
         mounts = runtime_library_mounts([Path('/usr/bin/python3')])
         self.assertTrue(mounts)
@@ -50,6 +53,7 @@ class SystemRuntimeTests(unittest.TestCase):
             self.assertEqual(source, source.resolve())
             self.assertNotIn(str(destination), ('/usr/lib', '/lib', '/lib64'))
 
+    @require(linux_runtime_tools, "publishes the Linux system runtime (ldd/ldconfig, glibc) into the sandbox")
     def test_ldd_paths_with_spaces_remain_complete(self):
         with tempfile.TemporaryDirectory(prefix='runtime path ') as temporary:
             root = Path(temporary)
