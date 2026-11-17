@@ -167,6 +167,11 @@ mamba run -n Auriga python -u -m auriga.apps.gateway \
 
 See the [Agent Backends guide](docs/development/agent-backends.md) for the architecture, per-backend configuration, native capability policy, and the comparison protocol for harness experiments across backends.
 
+Optional [WALL-OSS delegation](docs/design/policy-delegation.md) lets the selected agent call `robot_policy_delegate`
+to hand a subtask to a configured action-model server. Enable `features.wall_oss` and configure `wall_oss` separately;
+it is disabled by default. Policy chunks still execute through `Harness.execute`, and the agent receives the
+recorded receipt and final observation. Software integration checks do not establish Claude Code + WALL-OSS task performance.
+
 ---
 
 ## Quick Start

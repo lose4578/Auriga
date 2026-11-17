@@ -167,6 +167,10 @@ mamba run -n Auriga python -u -m auriga.apps.gateway \
 
 架构、各后端配置、原生能力策略以及跨后端对比实验的协议，见 [Agent Backends 指南](docs/development/agent-backends.md)。
 
+可选的 [WALL-OSS 委托](docs/design/policy-delegation.md)允许所选智能体通过 `robot_policy_delegate`，将子任务交给配置好的动作模型服务器。
+需单独启用 `features.wall_oss` 并配置 `wall_oss`，默认关闭。策略动作仍经过 `Harness.execute`，智能体接收真实回执和最终观测。
+软件集成检查不代表已经验证 Claude Code 与 WALL-OSS 组合的任务表现。
+
 ---
 
 ## 快速开始

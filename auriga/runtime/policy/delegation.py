@@ -25,9 +25,8 @@ actor token-usage snapshot at both ends. See docs/design/policy-delegation.md.
 import time
 
 from ...core.contracts import canonical, digest
-from ...core.presentation.actor_presentation import strip_hashes
 from ...core.presentation.feedback_delivery import execution_unconfirmed
-from ...core.tool_output import StructuredText, ToolResponse
+from ...core.tool_output import StructuredText, ToolResponse, output_contract_error
 from ...cortex.context.delegation_gate import call_budget, fixed_budget, requires_instruction, supervised
 from ...robot.model.arx_contract import EE_CHUNK_POSE_CONVENTION, FRAME_ID
 from .progress_monitor import GptProgressMonitor, SEQUENCE_HISTORY
@@ -95,6 +94,10 @@ def run_delegation(harness, args, correlation):
         except KeyError:
             previous = None
         if previous is not None:
+            if fixed_budget(settings.gate):
+                # The remaining episode budget changes after execution. Replays retain
+                # the original admission's bound while still comparing caller intent.
+                request['max_policy_steps'] = previous['request']['max_policy_steps']
             if previous["request"] != request:
                 raise ValueError("delegation_id_content_conflict")
             return _stored(harness, delegation_id)
@@ -116,7 +119,7 @@ def run_delegation(harness, args, correlation):
             instruction, source = harness.latest.get("task_instruction"), "native_task"
             if not isinstance(instruction, str) or not instruction.strip():
                 raise ValueError("native_task_instruction_unavailable: pass instruction explicitly")
-        instruction = strip_hashes(instruction).strip()
+        instruction = harness.actor_presentation.present_text(instruction).strip()
         if not instruction:
             raise ValueError("policy_instruction_empty_after_scrubbing")
         public = dict(request, delegation_id=delegation_id, instruction=instruction, instruction_source=source,
@@ -362,7 +365,7 @@ def _supervise(harness, supervisor, settings, public, steps, head_history, monit
         result = dict(verdict=None, error="no_camera_images")
     else:
         try:
-            result = supervisor.check(context, images)
+            result = supervisor.check(harness.actor_presentation.present(context), images)
         except Exception as error:  # a monitor never ends a call by failing
             result = dict(verdict=None, error=f"{type(error).__name__}: {error}"[:300])
     monitor["checks"] += 1
@@ -399,8 +402,12 @@ def delegation_response(runtime, args, correlation):
     """Tool handler: receipt first, then the final observation (images + measured state)."""
     result = runtime.policy_delegate(dict(args), correlation)
     content = [StructuredText(result, projection="owner_record")]
+    response = ToolResponse(content, data=result, kind="delegation", data_projection="owner_record")
     observation_id = result["receipt"].get("final_observation_id")
-    if observation_id:
-        bundle = runtime.store.read("observation", observation_id)
-        content += runtime.observation_content(bundle, correlation, structured=True)
-    return ToolResponse(content, data=result, kind="delegation", data_projection="owner_record")
+    try:
+        if observation_id:
+            bundle = runtime.store.read("observation", observation_id)
+            response.content += runtime.observation_content(bundle, correlation, structured=True)
+    except Exception:
+        return output_contract_error(response, 'robot_policy_delegate', 'action_feedback_unavailable', '/content')
+    return response

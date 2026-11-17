@@ -6,6 +6,14 @@ This complements the $\pi_{0.5}$ bridge (`robot_policy_step`), which executes a 
 
 ## Mechanism
 
+The tool is available through the shared registry to Codex, Claude Code and OpenCode actors. MCP publishes it
+as an ordered physical tool (`readOnlyHint=false`); programs cannot call it. A replay retains the budget fixed
+at the original admission, even when the episode's remaining budget has since changed. Failure to render the
+final observation preserves the typed delegation receipt and reports a delivery error without executing again.
+Policy instructions and camera-supervisor text pass through the same actor presentation scrubber; observer
+records retain the original audit data. These integration guarantees do not establish task performance for a
+new actor/policy combination.
+
 ```mermaid
 flowchart TD
     A["Actor: robot_policy_delegate(observation_id, instruction, subtask_note?, max_policy_steps at gate none)"] --> B["Admission: current observation, plan, run accepting, no active action"]

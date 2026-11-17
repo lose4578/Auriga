@@ -45,8 +45,12 @@ class GoldenClassificationTest(unittest.TestCase):
         cls.registry = full_registry()
 
     def test_table_covers_every_registered_tool(self):
-        self.assertEqual(sorted(self.registry.names), self.golden['registered_tools'])
-        self.assertEqual({row['tool'] for row in self.golden['rows']}, set(self.registry.names))
+        # Delegation was added after the historical Codex allowlist snapshot.
+        legacy_names = set(self.registry.names) - {'robot_policy_delegate'}
+        self.assertEqual(sorted(legacy_names), self.golden['registered_tools'])
+        self.assertEqual({row['tool'] for row in self.golden['rows']}, legacy_names)
+        self.assertFalse(self.registry.parallel_safe('robot_policy_delegate', {}))
+        self.assertEqual(self.registry.spec('robot_policy_delegate', role='actor').effect_for({}), 'physical')
 
     def test_registry_reproduces_every_golden_row(self):
         for row in self.golden['rows']:

@@ -9,6 +9,7 @@ from pathlib import Path
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 import uuid
 
 import numpy as np
@@ -122,6 +123,28 @@ class DelegationFixture(unittest.TestCase):
 
 
 class DelegationCheck(DelegationFixture):
+
+    def test_feedback_failure_preserves_receipt_without_reexecution(self):
+        harness, robot = self.harness(temporary(self), FakePolicy())
+        args = dict(observation_id=harness.latest['observation_id'], max_policy_steps=16)
+        with patch.object(harness, 'observation_content', side_effect=RuntimeError('image unavailable')):
+            response = self.delegate(harness, call='feedback', **args)
+        self.assertFalse(response.success)
+        self.assertEqual(response.kind, 'delegation')
+        self.assertEqual(response.data['receipt']['policy_steps_used'], 16)
+        self.assertEqual(response.contract_error['phase'], 'after_handler')
+        replay = self.delegate(harness, call='feedback', **args)
+        self.assertEqual(replay.data['receipt'], response.data['receipt'])
+        self.assertEqual(len(robot.received), 1)
+
+    def test_mcp_catalog_exposes_delegation_as_ordered_actor_tool(self):
+        from auriga.cortex.agents.mcp_server import mcp_tool_catalog
+        harness, _ = self.harness(temporary(self), FakePolicy())
+        catalog = mcp_tool_catalog(harness.tool_registry.catalog(harness), harness.actor_presentation,
+                                   parallel_hints={'robot_policy_delegate': False})
+        tool = next(item for item in catalog if item['name'] == 'robot_policy_delegate')
+        self.assertFalse(tool['annotations']['readOnlyHint'])
+        self.assertIn('observation_id', tool['inputSchema']['properties'])
 
     def test_tool_is_gated_by_wall_oss_and_is_actor_only(self):
         directory = temporary(self)
@@ -314,6 +337,28 @@ class PickPlaceV9Check(DelegationFixture):
 
     GATE = dict(gate="pickplace_v9", monitor_base_url="http://monitor.invalid/v1", monitor_key_file="/nonexistent/key")
     INSTRUCTION = "Do the task."
+
+    def test_replay_preserves_budget_fixed_at_original_admission(self):
+        harness, robot = self.harness(temporary(self), FakePolicy(), wall_oss=self.GATE,
+                                      robot_class=CameraRobot, step_limit=200)
+        harness.delegate_monitor = FakeMonitor(['done'])
+        args = dict(observation_id=harness.latest['observation_id'], instruction=self.INSTRUCTION)
+        first = self.delegate(harness, call='replay-budget', **args)
+        count = len(robot.received)
+        second = self.delegate(harness, call='replay-budget', **args)
+        self.assertEqual(second.data['receipt'], first.data['receipt'])
+        self.assertEqual(len(robot.received), count)
+        with self.assertRaisesRegex(ValueError, 'delegation_id_content_conflict'):
+            self.delegate(harness, call='replay-budget', **dict(args, instruction='Different instruction.'))
+
+    def test_supervisor_context_uses_shared_actor_scrubber(self):
+        harness, _ = self.harness(temporary(self), FakePolicy(), wall_oss=self.GATE, robot_class=CameraRobot)
+        harness.delegate_monitor = FakeMonitor(['done'])
+        harness.latest['task_instruction'] += ' ' + HASH
+        self.delegate(harness, instruction=self.INSTRUCTION, subtask_note='Observe progress. ' + HASH)
+        context = harness.delegate_monitor.calls[0][0]
+        self.assertNotIn('a' * 64, json.dumps(context))
+        self.assertIn('Observe progress.', context['note'])
     # Object nouns of the benchmark task instructions: none may appear in the gate text, guidance, field help or examples.
     NOUNS = ("egg", "doll", "toast", "block", "xylophone", "tower", "clothes", "conveyor", "charger", "bottle", "dustbin",
              "equation", "bowl", "box", "coin", "pen", "toolbox", "tube", "mug", "ball", "vase", "kong", "screw", "liquid",
