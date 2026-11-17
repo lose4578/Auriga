@@ -230,6 +230,7 @@ def summarize(root, price_card=None):
                 counting=model_requests.get("counting"), served_models=served_models or None,
                 model_usage_relay=relay, model_usage_relay_source=relay_source,
                 usage_methods=_usage_methods(usage, relay) if relay else None,
+                policy_delegation=summary.get("policy_delegation"),
                 termination_reason=summary.get("termination_reason"),
                 termination_authority=summary.get("termination_authority"),
                 actor_stall=summary.get("actor_stall"),

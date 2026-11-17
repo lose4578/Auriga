@@ -181,6 +181,7 @@ def episode_summary(store, identity, session, harness, *, benchmark, final_statu
               "actor_continuation_count": getattr(harness, "actor_continuation_count", 0),
               "actor_stall": getattr(harness, "actor_stall", None),
               "native_episode": store.read_state("runtime", "native_episode"),
+              "policy_delegation": store.read_state("runtime", "policy_delegation"),
               "model_requests": store.read_state("runtime", "model_requests"),
               # Provider-reported served model per delivered completion, and the relay-measured usage every backend
               # shares (None = not recorded); configured vs served and native vs relay usage are compared, not equated.

@@ -16,6 +16,8 @@ from ..robot.motion.motion_speed import SPEED_INPUT_FIELDS, SPEED_EFFECTIVE_FIEL
 from ..robot.motion.action_compilation import validate_backend_action
 from ..cortex.context.task_planning import TaskPlanning, decision_reminder_text
 from ..cortex.agents.base import read_agent_identity
+from ..core.action_validation import NATIVE_POLICY_ACTION_TYPES
+from .policy.policy_capture import discard_policy_capture
 from ..perception.scene.store import SceneStore
 from ..robot.model.geometry import GeometryTools
 from ..core.observation_policy import LEGACY_ACTOR_PROFILE, require_actor_observation, actor_robot_state, reject_privileged, has_calibration, allows_depth
@@ -164,6 +166,10 @@ class Harness:
         self.scene_artifacts = store
         self.programs = None
         self.action_policy = None
+        # Optional whole-subtask policy (features.wall_oss); see runtime/policy/delegation.py.
+        self.delegate_policy = None
+        # Camera supervisor of a delegation (gate pickplace_v9); created lazily from wall_oss.monitor_* unless injected.
+        self.delegate_monitor = None
         self.visual_reviewer = None
         self.latest = None
         self.home_check = (HomePoseCheck(store)
@@ -384,7 +390,13 @@ class Harness:
             self.store.event("environment.reset",{"previous_identity":previous,"seed":seed,"layout_id":layout_id,"observation_id":observation["observation_id"]})
         return observation
 
-    def execute(self, action, correlation=None):
+    def execute(self, action, correlation=None, *, policy_capture=None):
+        """Single physical admission point.
+
+        ``policy_capture`` is an optional list owned by a policy delegation: a
+        native policy-input capture returned by an EEChunkAction is appended to
+        it instead of entering the receipt, the store or any actor projection.
+        """
         from ..robot.motion.motion_speed import resolve_action_speed
         original_speed = {key: action[key] for key in SPEED_INPUT_FIELDS if key in action}
         action = resolve_action_speed(action, self.config.features.default_motion_speed_scale)
@@ -414,7 +426,7 @@ class Harness:
                 if action.get("type") == "ArmQueueAction" and not self.config.features.arm_queue:
                     raise ValueError("arm_queue_not_enabled_for_run")
                 self.task_planning.require(self.identity)
-                if action.get("type") == "JointPrefixAction":
+                if action.get("type") in NATIVE_POLICY_ACTION_TYPES:
                     validate_identity(action)
                     if any(action.get(key) != self.identity[key] for key in IDENTITY): raise ValueError("stale_environment_identity")
                     if action.get("world_kind") != "observed": raise ValueError("internal_action_cannot_execute_observed_world")
@@ -475,6 +487,13 @@ class Harness:
         try:
             with self.robot_lock:
                 raw_receipt = self.robot.execute(action, progress_callback=progress, cancel_flag=self.cancel)
+                capture = raw_receipt.pop("policy_capture", None)
+                if capture is not None:
+                    # Policy inputs (raw RGB + EE state) belong to the policy bridge only.
+                    if policy_capture is not None:
+                        policy_capture.append(capture)
+                    else:
+                        discard_policy_capture(capture)
                 episode_terminal = raw_receipt.pop("episode_terminal", None)
                 terminal_raw = raw_receipt.pop("terminal_observation", None)
                 before_raw = raw_receipt.pop("before_observation", None)
@@ -1097,6 +1116,25 @@ class Harness:
                 actions=prediction["actions"][:prefix], timeout_s=request["timeout_s"], policy_input=request,
                 policy_provenance=dict(prediction_ref=provenance, prefix=prefix))
             return self.execute(action, correlation)
+
+    def policy_observation(self):
+        """Native inputs of an external policy at the current, unmoved step.
+
+        Read-only: physics does not advance. The capture must describe the same
+        simulator step as the current actor observation.
+        """
+        if not hasattr(self.robot, "policy_observation"):
+            raise ValueError("policy_observation_unavailable_for_backend")
+        with self.robot_lock:
+            capture = self.robot.policy_observation()
+        if self.latest is None or capture.get("final_sim_step") != self.latest.get("sim_step"):
+            discard_policy_capture(capture)
+            raise ValueError("policy_observation_not_aligned_with_current_observation")
+        return capture
+
+    def policy_delegate(self, args, correlation):
+        from .policy.delegation import run_delegation
+        return run_delegation(self, args, correlation)
 
     def _action_from_args(self, name, args):
         from ..robot.motion.action_compilation import compile_action

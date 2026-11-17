@@ -167,6 +167,11 @@ def robot_policy_step(runtime, args, correlation):
     return execute_action(runtime, 'robot_policy_step', args, correlation)
 
 
+def robot_policy_delegate(runtime, args, correlation):
+    from ..policy.delegation import delegation_response
+    return delegation_response(runtime, args, correlation)
+
+
 def program_run(runtime, args, correlation):
     from .program_tools import run_program
     return run_program(runtime, 'program_run', args, correlation)

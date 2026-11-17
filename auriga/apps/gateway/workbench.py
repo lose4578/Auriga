@@ -6,6 +6,7 @@ import secrets
 import time
 import fcntl
 import hashlib
+import zlib
 from pathlib import Path
 
 
@@ -353,6 +354,18 @@ class Workbench(WorkbenchRoutes):
                     Path(self.config.policy.checkpoint),
                     gpu=self.gpu, log_path=self.root / "private/pi05.log", timeout=120,
                     server_url=self.config.policy.server_url)
+            if self.config.features.wall_oss:
+                from ...runtime.policy.delegate_policy import XPolicyLabProcessPolicy
+                settings = self.config.wall_oss
+                urls = (settings.server_url, *settings.server_urls)
+                # Several equivalent servers: a stable per-run choice spreads concurrent episodes.
+                server_url = urls[zlib.crc32(self.identity["run_id"].encode()) % len(urls)]
+                self.harness.store.event("policy_delegation.server_selected", dict(server_url=server_url,
+                    candidates=len(urls), gate=settings.gate), source="policy_delegation")
+                self.harness.delegate_policy = await asyncio.to_thread(XPolicyLabProcessPolicy,
+                    server_url, python=settings.python, timeout_s=settings.timeout_s,
+                    replan_steps=settings.replan_steps, log_path=self.root / "private/wall_oss.log",
+                    evaluation_id=self.identity["run_id"], trial_id=f"{self.task}-{self.identity['run_id']}")
             if benchmark:
                 instruction = self.harness.latest.get("task_instruction")
                 if not instruction: raise ValueError("native_task_instruction_missing")
@@ -432,6 +445,8 @@ class Workbench(WorkbenchRoutes):
                 instructions += "\n" + verification_instructions.replace("operation_verify", "vision_review(evidence_mode='operation')")
             from ...perception.external.obs3d import developer_instructions as obs3d_instructions
             instructions += obs3d_instructions(self.config.features)
+            from ...cortex.context.delegation_gate import developer_instructions as delegation_instructions
+            instructions += delegation_instructions(self.config)
             if getattr(self.config.features, "pose_skill", False):
                 from ...perception.external.pose_skill import INSTRUCTIONS as pose_skill_instructions
                 instructions += pose_skill_instructions
@@ -667,6 +682,7 @@ class Workbench(WorkbenchRoutes):
             vision_compare=getattr(self, 'vision_compare', config.features.vision_compare),
             visual_reviewer=getattr(self, 'visual_review_model', None),
             action_policy=True if getattr(self, 'pi05_enabled', False) else None,
+            delegate_policy=True if config.features.wall_oss else None,
             capabilities=None, programs=True)
         return create_registry(runtime=runtime).catalog(runtime, role='actor')
 
@@ -901,6 +917,8 @@ class Workbench(WorkbenchRoutes):
             await cleanup("terminal", self.terminal.close)
         if getattr(self.harness, "action_policy", None) is not None:
             await cleanup("policy", lambda: asyncio.to_thread(self.harness.action_policy.close))
+        if getattr(self.harness, "delegate_policy", None) is not None:
+            await cleanup("delegate_policy", lambda: asyncio.to_thread(self.harness.delegate_policy.close))
         await cleanup("session", lambda: asyncio.to_thread(self.session.close))
         if getattr(self.harness,"programs",None):
             await cleanup("programs", lambda: asyncio.to_thread(self.harness.programs.close))

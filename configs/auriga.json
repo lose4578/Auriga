@@ -85,6 +85,7 @@
     "recovery_evidence": true,
     "action_trajectory_delivery": "automatic",
     "pi05": false,
+    "wall_oss": false,
     "visual_review_model": null,
     "completion_guidance": "hook",
     "disabled_tools": [],

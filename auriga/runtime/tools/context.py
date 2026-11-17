@@ -17,13 +17,15 @@ class ToolAvailability:
     visual_review: bool
     policy: bool
     programs: bool
+    delegate_policy: bool = False
 
     @classmethod
     def from_runtime(cls, runtime):
         return cls(runtime.config.features, frozenset(runtime.disabled_tools),
             runtime.observation_profile, deepcopy(runtime.capabilities), runtime.enable_wait,
             runtime.vision_compare, runtime.visual_reviewer is not None,
-            runtime.action_policy is not None, runtime.programs is not None)
+            runtime.action_policy is not None, runtime.programs is not None,
+            getattr(runtime, 'delegate_policy', None) is not None)
 
 
 @dataclass(frozen=True)

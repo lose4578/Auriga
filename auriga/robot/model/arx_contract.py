@@ -16,6 +16,9 @@ def validate_action(action):
     if action.get("type") == "JointPrefixAction":
         validate_joint_prefix(action)
         return None, None
+    if action.get("type") == "EEChunkAction":
+        validate_ee_chunk(action)
+        return "both", None
     if action.get("mode") != "absolute" or action.get("frame_id") != FRAME_ID:
         raise ValueError("unsupported_capability: absolute EE in env_origin required")
     if action.get("tcp_config_id") != TCP_CONFIG_ID:
@@ -99,6 +102,63 @@ def validate_joint_prefix(action):
     return rows
 
 
+# Native RoboDojo end-effector action keys (eval_env.take_action infers the "ee"
+# action type from *_ee_pose keys and solves IK per arm). Pose layout is
+# [x, y, z, qw, qx, qy, qz] in the env_origin frame of the arm's ee link, the
+# same convention as the native observation state; the gripper is a normalized
+# opening command that the native interface clips to [0, 1].
+EE_CHUNK_POSE_KEYS = ("left_ee_pose", "right_ee_pose")
+EE_CHUNK_GRIPPER_KEYS = ("left_ee_joint_state", "right_ee_joint_state")
+EE_CHUNK_POSE_CONVENTION = "xyz_qwxyz"
+EE_CHUNK_MAX_ROWS = 50
+EE_CHUNK_ENVELOPE_M = 2.0
+
+
+def validate_ee_chunk(action):
+    """Validate a policy-authored native EE-pose chunk without worker access.
+
+    The same bounds Auriga applies to model-authored EE targets: finite values,
+    a normalized quaternion and the configured 2 m position envelope. Rows are
+    executed as the policy emitted them; nothing is re-solved or retimed here.
+    """
+    validate_dual_arm_progression(action)
+    validate_action_speed(action)
+    validate_hold_native_steps(action)
+    if action.get("type") != "EEChunkAction":
+        raise ValueError("invalid_ee_chunk_type")
+    if action.get("frame_id") != FRAME_ID or action.get("pose_convention") != EE_CHUNK_POSE_CONVENTION:
+        raise ValueError("ee_chunk_requires_env_origin_xyz_qwxyz_poses")
+    rows = action.get("actions")
+    if not isinstance(rows, list) or not 1 <= len(rows) <= EE_CHUNK_MAX_ROWS:
+        raise ValueError("ee_chunk_requires_1_to_50_actions")
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != set(EE_CHUNK_POSE_KEYS + EE_CHUNK_GRIPPER_KEYS):
+            raise ValueError("ee_chunk_row_requires_both_arm_poses_and_grippers")
+        for key in EE_CHUNK_POSE_KEYS + EE_CHUNK_GRIPPER_KEYS:
+            value, size = row[key], 7 if key in EE_CHUNK_POSE_KEYS else 1
+            if not isinstance(value, list) or len(value) != size or any(
+                isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x) for x in value
+            ):
+                raise ValueError("ee_chunk_requires_finite_native_values")
+        for key in EE_CHUNK_POSE_KEYS:
+            position, quaternion = row[key][:3], row[key][3:]
+            if abs(math.sqrt(sum(x * x for x in quaternion)) - 1) > 1e-3:
+                raise ValueError("invalid_pose: quaternion must be normalized")
+            if any(abs(x) > EE_CHUNK_ENVELOPE_M for x in position):
+                raise ValueError("out_of_bounds: EE target outside the configured 2 m envelope")
+    timeout = action.get("timeout_s", 20)
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or not 0.1 <= timeout <= 300:
+        raise ValueError("invalid_ee_chunk_timeout")
+    limit = action.get("ik_failure_stop_steps")
+    if limit is not None and (type(limit) is not int or not 1 <= limit <= EE_CHUNK_MAX_ROWS):
+        raise ValueError("invalid_ik_failure_stop_steps")
+    if type(action.get("policy_capture", False)) is not bool:
+        raise ValueError("invalid_policy_capture_flag")
+    if not isinstance(action.get("policy_provenance"), dict) or not action["policy_provenance"]:
+        raise ValueError("ee_chunk_requires_policy_provenance")
+    return rows
+
+
 def validate_preview_action(action):
     """Preview supports one native segment, with the same execution semantics."""
     # Composite requests use their own planners. Reject their type before the
@@ -108,7 +168,7 @@ def validate_preview_action(action):
     arm, target = validate_action(action)
     if arm == "both":
         raise ValueError("dual_arm_motion_preview_unsupported")
-    if (action.get("type") == "JointPrefixAction" or action.get("hold_native_steps") is not None
+    if (action.get("type") in ("JointPrefixAction", "EEChunkAction") or action.get("hold_native_steps") is not None
             or action.get("path", {}).get("kind") != "backend_free"
             or len(action["path"].get("waypoints", [])) != 1 or arm is None):
         raise ValueError("motion_preview_requires_one_backend_free_waypoint")

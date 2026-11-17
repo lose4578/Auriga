@@ -38,6 +38,7 @@ def build(output):
                         "auriga/apps/evaluation/queue.py", "auriga/apps/evaluation/report.py",
                         "auriga/runtime/policy/policy_workers/pi05_arx_client.py",
                         "auriga/runtime/policy/policy_workers/pi05_arx_manifest.json",
+                        "auriga/runtime/policy/policy_workers/xpolicylab_ws_client.py",
                         "auriga/reference_sources/third_party/roboprobe/api-provenance.json"}
             missing = expected - set(archive.namelist())
             if missing:

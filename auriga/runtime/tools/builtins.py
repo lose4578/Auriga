@@ -43,6 +43,8 @@ def unavailable(name, runtime, args):
         return 'tool_disabled_by_config:operation_verify'
     if name == 'robot_policy_step' and not runtime.policy:
         return 'policy_not_enabled_for_run'
+    if name == 'robot_policy_delegate' and not runtime.delegate_policy:
+        return 'wall_oss_not_enabled_for_run'
     if name in {'program_run', 'program_status'} and not runtime.programs:
         return 'program_runner_not_started'
     return None
@@ -128,11 +130,23 @@ def create_registry(extra_specs=(), *, runtime=None):
     if any(observe3d):
         observe3d = (*observe3d, obs3d_action_overlay(runtime))
     pose_skill = pose_skill_enabled(runtime)
+    config = getattr(runtime, 'config', None)
+    if hasattr(config, 'wall_oss'):
+        from ...cortex.context.delegation_gate import monitor_steps, published_budget
+        gate, budget = config.wall_oss.gate, published_budget(config.wall_oss)
+        monitor = (monitor_steps(config.wall_oss), config.wall_oss.monitor_takeover_consecutive,
+                   config.wall_oss.call_budget_fraction)
+    else:
+        gate, budget, monitor = 'none', 400, (64, 1, 0.8)
     definitions = {item['name']: item for item in (public_definitions(vggt_height=selected or False, object_table=object_table,
                                                                       scene3d=scene3d, observe3d=observe3d,
-                                                                      pose_skill=pose_skill)
-                   if (selected or object_table or scene3d or any(observe3d)) else public_definitions(pose_skill=pose_skill))}
+                                                                      pose_skill=pose_skill, wall_oss_gate=gate,
+                                                                      wall_oss_call_budget=budget, wall_oss_monitor=monitor)
+                   if (selected or object_table or scene3d or any(observe3d))
+                   else public_definitions(pose_skill=pose_skill, wall_oss_gate=gate, wall_oss_call_budget=budget,
+                                           wall_oss_monitor=monitor))}
     effects = dict(robot_action=action_effect, robot_wait='physical', robot_policy_step='physical',
+        robot_policy_delegate='physical',
         program_run='physical', task_plan=plan_effect, operation_memory=memory_effect,
         history_annotate_action='record', depth_query=geometry_effect, geometry_query=geometry_effect)
     parallel = dict(geometry_query=geometry_parallel, depth_query=depth_parallel, robot_observe=observe_parallel,
@@ -143,7 +157,7 @@ def create_registry(extra_specs=(), *, runtime=None):
     specs = []
     for name, definition in definitions.items():
         roles = {'actor', 'program', 'trusted_legacy'}
-        if name in {'program_run', 'program_status', 'robot_policy_step'}:
+        if name in {'program_run', 'program_status', 'robot_policy_step', 'robot_policy_delegate'}:
             roles.remove('program')
         legacy_schema = None
         if name == 'task_plan':

@@ -2,6 +2,8 @@
 from ...cortex.context.task_planning import ATTENTION_SCHEMA, EVIDENCE_LEDGER_SCHEMA, PLAN_SCHEMA
 from ...cortex.context.operation_verification import TOOL_PROPERTIES, TOOL_REQUIRED
 from ...core.tool_output import DETAIL_SCHEMA
+from ...cortex.context import delegation_gate
+from ...cortex.context.delegation_gate import tool_description
 
 def tool(name, description, properties=None, required=(), *, defer_loading=False, **schema_rules):
     return dict(type="function", name=name, description=description,
@@ -59,6 +61,11 @@ TOOLS = [
     tool("robot_policy_step", "Delegate one atomic local operation to the matched RoboDojo ARX X5 pi0.5 policy using current three-camera RGB and proprioception. Astra owns the overall task, target selection, approach and handoff. Supply prompt describing this local intent (for example grasp closure, short lift, placement adjustment or release); task context may accompany it. Execute only prefix rows (1..50), then return fresh feedback to Astra. Default prefix=5 is 0.20 seconds of simulated control. Do not delegate an entire task or loop this tool without reviewing feedback and deciding the next local goal. Text such as '1 cm' or an arm name is NOT a movement/arm constraint. Available only when this run enables pi0.5. Native success stops execution immediately.",
          dict(observation_id=dict(type="string"), prompt=dict(type="string"), prefix=dict(type="integer", minimum=1, maximum=50),
               timeout_s=dict(type="number", minimum=.1, maximum=300), action_id=dict(type="string")), ("observation_id", "prompt"), defer_loading=True),
+    tool("robot_policy_delegate", tool_description("none"),
+         dict(observation_id=dict(type="string"), instruction=dict(type="string", minLength=1, maxLength=2000),
+              subtask_note=dict(type="string", minLength=1, maxLength=1000),
+              max_policy_steps=dict(type="integer", minimum=1, maximum=400),
+              delegation_id=dict(type="string", minLength=1, maxLength=128)), ("observation_id",)),
     tool("vision_review", "Get a GPT-6.1 Sol second opinion on two saved RGB images: visible target motion and possible retention. Supply the target's BEFORE roi=[x,y,width,height] and a short target description. This is fallible image interpretation, not metric measurement, contact or task scoring. Await the result directly.",
          dict(before_observation_id=dict(type="string"),after_observation_id=dict(type="string"),camera_id=dict(type="string"),
               roi=dict(type="array",items=dict(type="integer"),minItems=4,maxItems=4),target=dict(type="string"),
@@ -226,6 +233,13 @@ PARAMETER_DESCRIPTIONS = {
         "timeout_s": "Optional wall-clock execution deadline in seconds, 0.1..300, default 120; not simulated duration.",
         "action_id": _NEW_ACTION_HELP,
     },
+    "robot_policy_delegate": {
+        "observation_id": _OBSERVATION_HELP + " The policy starts from this unmoved state.",
+        "instruction": "Optional language instruction sent to the policy, 1..2000 characters. Default: the native task instruction of the current observation, the only kind of language the policy was trained on. A free-form sub-goal is passed verbatim but is outside its training distribution; text naming an arm or distance is not a constraint.",
+        "subtask_note": "Optional 1..1000 character statement of the subtask you are delegating and the state you expect when it returns. Recorded in the receipt and delegation log for later review; never sent to the policy.",
+        "max_policy_steps": "Optional native-step budget for this delegation, integer 1..400; default wall_oss.default_policy_steps (200 unless configured), upper bound wall_oss.max_policy_steps (400 unless configured). At 25 Hz, 25 steps is 1 simulated second; each step consumes the official episode budget. The policy replans every replan_steps (default 16) steps.",
+        "delegation_id": "Optional caller-chosen idempotency ID, 1..128 characters; omission derives it from this tool call. Reusing an ID with identical input rereads that delegation's receipt instead of running the policy again; different input is rejected.",
+    },
     "depth_query": {"request": "Required RGB-D query/target-management object with kind and the applicable fields in the tool description's input field guide. Coordinates are env_origin metres; pixels/ROI use original images. Target-based measurements/candidate use require their recorded episode and current observation; target_status/forget_target can inspect/remove stale handles."},
 }
 
@@ -316,6 +330,7 @@ PUBLIC_EXAMPLES = {
     "vision_compare": [dict(before_observation_id="obs_1", after_observation_id="obs_2", camera_id="cam_head", roi=[100,100,40,40])],
     "vision_review": [dict(before_observation_id="obs_1", after_observation_id="obs_2", camera_id="cam_head", roi=[100,100,40,40], target="the selected cup", condition="retained_with_gripper"), dict(evidence_mode="operation", phase="release", target="the selected cup", expected_result="The cup remains supported after the gripper withdraws.", action_ids=["act_1"], before_observation_id="obs_1", after_observation_id="obs_2", camera_id="cam_head", roi=[100,100,40,40])],
     "robot_policy_step": [dict(observation_id="obs_1", prompt="Adjust the local grasp, then return feedback.", prefix=5)],
+    "robot_policy_delegate": [dict(observation_id="obs_1", subtask_note="Finish the contact-rich placement from the current grasp.", max_policy_steps=160)],
     "depth_query": [dict(request=dict(kind="depth_points", observation_id="obs_1", camera_id="cam_head", pixels=[[320,240]]))],
     "operation_memory": [dict(request=dict(kind="help"))],
 }
@@ -489,10 +504,11 @@ def _with_input_guide(item):
 def _describe_public(item, vggt_height=False, object_table=False, scene3d=False):
     from ...core.contracts import canonical
     name, schema = item["name"], item["inputSchema"]
+    overrides, examples = item.pop("_field_help", None) or {}, item.pop("_examples", None)
     schemas = schema.get("oneOf", [schema])
     for branch in schemas:
         for field, field_schema in branch.get("properties", {}).items():
-            description = PARAMETER_DESCRIPTIONS.get(name, {}).get(field)
+            description = overrides.get(field) or PARAMETER_DESCRIPTIONS.get(name, {}).get(field)
             if description:
                 field_schema["description"] = description
         request = branch.get("properties", {}).get("request")
@@ -530,13 +546,14 @@ def _describe_public(item, vggt_height=False, object_table=False, scene3d=False)
                 depth = request_schema()
                 _describe_request(depth, DEPTH_REQUEST_DESCRIPTIONS)
                 request.update(depth)
-    if name in PUBLIC_EXAMPLES:
-        schema["examples"] = deepcopy(PUBLIC_EXAMPLES[name])
+    if examples or name in PUBLIC_EXAMPLES:
+        schema["examples"] = examples or deepcopy(PUBLIC_EXAMPLES[name])
         item["description"] += " Examples (replace IDs/pixels with actual saved evidence): " + " ; ".join(canonical(example) for example in schema["examples"])
     return _with_input_guide(item)
 
 
-def public_definitions(*, vggt_height=False, object_table=False, scene3d=False, observe3d=(False, False), pose_skill=False):
+def public_definitions(*, vggt_height=False, object_table=False, scene3d=False, observe3d=(False, False), pose_skill=False,
+                       wall_oss_gate="none", wall_oss_call_budget=2000, wall_oss_monitor=(64, 1, 0.8)):
     """Publish the same documented input contract to actor and program callers."""
     from ..actions.robot_action_schema import ROBOT_ACTION_TOOL
     from ...cortex.context.operation_memory import MEMORY_DESCRIPTION
@@ -546,6 +563,17 @@ def public_definitions(*, vggt_height=False, object_table=False, scene3d=False, 
         item = deepcopy(original)
         if name in DESCRIPTIONS:
             item["description"] = DESCRIPTIONS[name]
+        if name == "robot_policy_delegate":
+            # wall_oss_monitor = (policy steps between supervisor checks, consecutive takeover verdicts, call budget
+            # fraction); used by pickplace_v9 only.
+            item["description"] = tool_description(wall_oss_gate, wall_oss_call_budget, *wall_oss_monitor)
+            if delegation_gate.requires_instruction(wall_oss_gate):
+                item["inputSchema"]["required"] = ["observation_id", "instruction"]
+            if delegation_gate.fixed_budget(wall_oss_gate):
+                # The run fixes the call budget (wall_oss.call_budget_*); the actor does not choose one.
+                item["inputSchema"]["properties"].pop("max_policy_steps", None)
+            item["_field_help"] = delegation_gate.field_help(wall_oss_gate)
+            item["_examples"] = delegation_gate.examples(wall_oss_gate)
         if name == "robot_observe" and any(observe3d[:2]):
             from ...perception.external.obs3d import catalogue_sentence
             item["description"] += catalogue_sentence(*observe3d)

@@ -98,6 +98,31 @@ ACTION = _object('Original action evidence; the receipt is the execution authori
     result_observation_is_current=_value(B, 'Whether receipt.result_observation_id is the current observation.')),
     required=['receipt'])
 
+DELEGATION_RECEIPT = _object('Whole-subtask policy delegation receipt. It reports execution facts only, never task success.', dict(
+    delegation_id=_value(S, 'Delegation id; reuse with identical input rereads this receipt.'),
+    status=_value(S, 'finished (policy ran until its budget, the episode ended, or the camera supervisor judged the subtask done or took over), stopped (safety stop or cancellation), failed (policy error/timeout or a chunk that was rejected or failed), rejected (nothing executed) or unknown (a chunk execution is unconfirmed).'),
+    stop_reason=_value(S, 'max_policy_steps, monitor_done (the supervisor judged the subtask done; not proof of success), monitor_takeover (the supervisor judged progress not as expected), episode_ended, native_budget_exhausted, policy_error, policy_timeout, policy_input_unavailable, safety_stop, cancelled, chunk_rejected, chunk_failed, chunk_stopped or chunk_unknown.'),
+    stop_detail=_value([S, NULL], 'Owner reason behind stop_reason; null when none.'),
+    policy_steps_used=_value([I, NULL], 'Official native steps executed by the policy in this delegation; null when a chunk count is unknown.'),
+    max_policy_steps=_value(I, 'Native-step budget of this delegation.'),
+    replan_steps=_value(I, 'Native steps executed per policy inference at most.'),
+    inference_calls=_value(I, 'Policy inferences made.'),
+    chunk_action_ids=_list('Recorded EEChunkAction ids in execution order.', _value(S, 'Action id.')),
+    instruction=_value(S, 'Language instruction sent to the policy.'),
+    instruction_source=_value(S, 'native_task (current observation instruction) or actor (caller-supplied).'),
+    subtask_note=_value([S, NULL], 'Caller statement of the delegated subtask; not sent to the policy.'),
+    final_observation_id=_value([S, NULL], 'Observation after the last chunk; null when none was captured.'),
+    ik_failed_steps=_value(O, 'Per-arm native steps whose native IK failed (that arm kept its previous joint target).'),
+    last_policy_action=_value([O, NULL], 'Last executed policy row per arm: commanded position_m, quaternion_wxyz (env_origin) and gripper opening command; null when nothing executed.'),
+    action_budget=ACTION_BUDGET), required=['delegation_id', 'status', 'stop_reason'])
+
+DELEGATION = _object('robot_policy_delegate result; the receipt is the execution authority.', dict(
+    request=_value(O, 'Recorded delegation request.'),
+    receipt=DELEGATION_RECEIPT,
+    current_observation_id=_value([S, NULL], 'Current observation after the delegation; null when none is current.'),
+    result_observation_is_current=_value(B, 'Whether receipt.final_observation_id is the current observation.')),
+    required=['receipt'])
+
 UNIFIED_ACTION = _object('robot_action execute/direct result: original action evidence for a cached plan.', dict(
     plan_id=_value(S, 'Short plan id that was executed.'),
     action_id=_value(S, 'Action id of this execution.'),
@@ -340,6 +365,7 @@ CONTRACTS = dict(
     robot_action=dict(action=UNIFIED_ACTION, plan=PLAN, data=ACTION_INSPECTION),
     robot_wait=dict(action=ACTION),
     robot_policy_step=dict(action=ACTION),
+    robot_policy_delegate=dict(delegation=DELEGATION),
     robot_observe=dict(observation=OBSERVATION),
     history_view_observation=dict(data=OBSERVATION_METADATA),
     robot_contact_overlay=dict(data=_object('Contact-reference overlay metadata; derived projections, not contact evidence.', dict(

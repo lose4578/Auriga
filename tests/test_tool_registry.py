@@ -643,7 +643,7 @@ class ToolRegistryTests(unittest.TestCase):
                 self.assertIsNotNone(registry.unavailable(spec, variant, args))
                 with self.assertRaises(ValueError):
                     registry.invoke(tool, args, {}, runtime=variant, role='actor')
-        for name in ('robot_move_ee', 'scene_query', 'program_run', 'robot_policy_step'):
+        for name in ('robot_move_ee', 'scene_query', 'program_run', 'robot_policy_step', 'robot_policy_delegate'):
             with self.assertRaises(ValueError):
                 registry.spec(name, role='program')
         with self.assertRaises(ToolInputError):

@@ -4,7 +4,8 @@ import math
 
 import numpy as np
 
-from ...core.action_validation import arm_action, validate_action_speed, validate_arm_options, dual_path_shape
+from ...core.action_validation import (NATIVE_POLICY_ACTION_TYPES, arm_action, validate_action_speed,
+    validate_arm_options, dual_path_shape)
 
 
 PATH_TOLERANCE_RAD = .001
@@ -40,7 +41,7 @@ def resolve_action_speed(action, default_arm_scale=1.0):
     selections = (("speed_preset", "speed_scale", ARM_PRESETS),
                   ("gripper_speed_preset", "gripper_speed_scale", GRIPPER_SPEED_PRESETS))
     fields = set(SPEED_INPUT_FIELDS)
-    if result.get("type") == "JointPrefixAction" or "hold_native_steps" in result:
+    if result.get("type") in NATIVE_POLICY_ACTION_TYPES or "hold_native_steps" in result:
         if fields.intersection(action):
             raise ValueError("action_speed_unsupported_for_wait_or_joint_prefix")
         return result

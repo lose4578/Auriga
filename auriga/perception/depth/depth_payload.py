@@ -2,6 +2,7 @@
 import math
 from copy import deepcopy
 
+from ...core.action_validation import NATIVE_POLICY_ACTION_TYPES
 from ...core.observation_policy import allows_depth
 
 
@@ -47,7 +48,7 @@ def compact_action_feedback(harness, result, measurements, correlation):
         return None
     if (receipt.get("status") != "completed" or not receipt.get("result_observation_id")
             or action.get("gripper_events") or "hold_native_steps" in action
-            or action.get("type") == "JointPrefixAction" or not measurements):
+            or action.get("type") in NATIVE_POLICY_ACTION_TYPES or not measurements):
         return None
     for measurement in measurements:
         if measurement.get("status") != "supported":

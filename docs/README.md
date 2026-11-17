@@ -61,6 +61,7 @@ The tables below organize all documentation by topic. Development rules and arch
 | [Wrist Camera Viewpoint Solver](development/robotic-view.md) & [Stereo Epipolar Guide](development/stereo-guide.md) | Two optional geometric tools (disabled by default). |
 | [RGB-D Numeric Tools](development/rgbd-numeric-tools.md) | Depth queries, limitations, and configuration under explicit RGB-D observation conditions. |
 | [$\pi_{0.5}$ Inference Service](development/pi05-inference-service.md) | Interface and execution boundaries for the optional local policy bridge (disabled by default). |
+| [Policy Delegation (WALL-OSS)](design/policy-delegation.md) | Whole-subtask delegation to WALL-OSS over the XPolicyLab websocket protocol: native EE chunks, stop conditions, receipt, the `pickplace_v9` gate with its camera supervisor, and delegation logging (disabled by default). |
 | [Official Public Task Rules](development/public-task-rules.md) | Verbatim snapshot, prompt injection, and backward compatibility for the 42 official RoboDojo task specifications. |
 | [Default Task Notes](development/task-notes.md) | General manipulation notes injected at startup, versioning, and feature toggles. |
 

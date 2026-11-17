@@ -11,7 +11,7 @@ from ...core.tool_output import ToolResponse
 LEGACY_ACTION_TOOLS = frozenset({
     "robot_execute_ee", "robot_move_ee", "robot_move_grasp", "robot_move_dual_grasp",
     "robot_gripper", "robot_execute_plan", "robot_execute_queue",
-    "robot_policy_step", "depth_move",
+    "robot_policy_step", "robot_policy_delegate", "depth_move",
 })
 
 

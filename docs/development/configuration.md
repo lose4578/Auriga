@@ -199,6 +199,7 @@ The standalone auxiliary evidence agent runs in its own separate bubblewrap name
 | `features.depth_event_payload` | `false` | Allows routine intermediate actions with reliable depth measurements to deliver numeric summaries in place of inline images while still archiving full images; requires both an RGB-D profile and `depth_auto_feedback`. |
 | `features.enable_wait` | `true` | Exposes `robot_wait` to explicitly advance simulation by 1–50 native steps and return temporal image frames. |
 | `features.pi05` | `false` | Exposes the $\pi_{0.5}$ short-horizon policy prefix tool matched to the ARX X5. |
+| `features.wall_oss` | `false` | Exposes `robot_policy_delegate`, which hands a whole subtask to WALL-OSS-1.0-lite through an XPolicyLab websocket server; requires `wall_oss.server_url`. See [WALL-OSS Subtask Delegation](#wall-oss-subtask-delegation-wall_oss) and [Policy Delegation](../design/policy-delegation.md). |
 | `features.visual_review_model` | `null` | Disables auxiliary visual/operation verification by default; set explicitly to `gpt-6.1-sol` to enable `vision_review`, which shares the episode's model request budget. |
 | `features.tracking_guard` | `false` | Halts end-effector motion when sustained joint tracking error exceeds thresholds, returning partial execution evidence. |
 | `features.joint_replan` | `true` | Searches for closer valid $2\pi$-equivalent joint targets and substitutes the trajectory only when verified and shorter in native steps. |
@@ -259,7 +260,7 @@ All existing CLI flags remain supported alongside their negated counterparts, in
 
 ## Current Actor Tools and Availability Controls
 
-The active tool catalog is generated from public `ToolSpec` declarations in `ToolRegistry` and filtered by the resolved configuration, observation profile, and backend capabilities (`auriga.runtime.harness.TOOLS` is retained only as a legacy compatibility export and does not represent the live catalog). The table below lists the 20 built-in tool declarations plus the 2 optional view tools; optional tools are omitted from the catalog when disabled. Any tool can be disabled via `features.disabled_tools`, and configuration flags never bypass role checks, observation permissions, or physical action admission.
+The active tool catalog is generated from public `ToolSpec` declarations in `ToolRegistry` and filtered by the resolved configuration, observation profile, and backend capabilities (`auriga.runtime.harness.TOOLS` is retained only as a legacy compatibility export and does not represent the live catalog). The table below lists the 21 built-in tool declarations plus the 2 optional view tools; optional tools are omitted from the catalog when disabled. Any tool can be disabled via `features.disabled_tools`, and configuration flags never bypass role checks, observation permissions, or physical action admission.
 
 | Tool | Baseline Availability / Prerequisites | Purpose |
 | --- | --- | --- |
@@ -272,6 +273,7 @@ The active tool catalog is generated from public `ToolSpec` declarations in `Too
 | `robot_action_status` | Enabled by default | Query the execution status of a previously submitted action without re-executing it. |
 | `robot_wait` | `features.enable_wait=true` | Hold dual-arm joint and gripper targets while explicitly advancing simulation steps. |
 | `robot_policy_step` | `features.pi05=true` and matching policy service running | Execute a bounded $\pi_{0.5}$ joint-space policy prefix for a local sub-goal. |
+| `robot_policy_delegate` | `features.wall_oss=true` and a reachable XPolicyLab WallX server (actor only, never programs) | Hand a whole subtask to WALL-OSS; it runs closed-loop on native EE-pose chunks until its step budget, the supervisor's verdict, episode end, an error or a safety stop, then returns a compact receipt and the final observation. |
 | `history_list_actions` | Enabled by default | Paginate through immutable historical action requests and execution receipts. |
 | `history_view_observation` | Enabled by default | Inspect historical camera images and robot states with optional camera selection, ROI cropping, and zoom. |
 | `history_read_trace` | Enabled by default | Read permitted planned, commanded, and measured joint/pose trajectories. |
@@ -357,6 +359,30 @@ Per-run fields from `python -m auriga.apps.evaluation.report` (`conditions` and 
 | `agent_turn_status` | `summary.json` | Terminal status of the last agent turn for every backend; `codex_turn_status` keeps the same value for compatibility. | |
 
 For Claude Code and OpenCode, `token_accounting.source` is `relay.<wire>.usage.sum` and the report keeps that label; price cards without cache-write pricing give partial estimates there (`cache_write_pricing_unknown`).
+### WALL-OSS Subtask Delegation (`wall_oss`)
+
+`features.wall_oss=true` connects, at workbench start, an isolated XPolicyLab websocket client to a running WallX policy server and exposes `robot_policy_delegate`. The client runs in its own interpreter, which needs `numpy`, `msgpack` and `websockets` (sync client, version 12 or newer); these are not Auriga dependencies. A startup failure to reach the server fails the run start, like the $\pi_{0.5}$ bridge. Design, protocol and logging: [Policy Delegation](../design/policy-delegation.md).
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `wall_oss.server_url` | `null` | `ws://host:port` (or `wss://`) of the XPolicyLab policy server running `policy/WallX`. Required when `features.wall_oss=true`. |
+| `wall_oss.server_urls` | `[]` | Additional equivalent `ws://` servers. Each episode connects to one of `server_url` + `server_urls`, chosen by a stable hash of `run_id` (event `policy_delegation.server_selected`), to spread concurrent episodes over several sequential policy servers. |
+| `wall_oss.python` | `null` | Absolute path of the interpreter for the isolated client (`policy_workers/xpolicylab_ws_client.py`); `null` uses the gateway's Python. Not resolved, so a virtualenv's `bin/python` symlink keeps its environment. |
+| `wall_oss.default_policy_steps` | `200` | Gate `none`: per-delegation native-step budget when the actor omits `max_policy_steps` (200 steps = 8 simulated seconds at 25 Hz). Must not exceed `wall_oss.max_policy_steps`. |
+| `wall_oss.max_policy_steps` | `400` | Gate `none`: upper bound of the actor-chosen per-delegation native-step budget (`1`..`400`). At 25 Hz, 400 steps are 16 simulated seconds. Every step consumes the official episode budget. |
+| `wall_oss.replan_steps` | `16` | Policy rows executed per inference (`1`..`48`), the official WallX setting. Must not exceed the server's `replan_steps`: its keyframe-memory protocol rejects a request that advances further. |
+| `wall_oss.timeout_s` | `60.0` | Wall-clock bound in seconds for connecting, the handshake and each `reset` / `infer` request. A timeout poisons the client; the delegation stops with `policy_timeout` and the next delegation reconnects. |
+| `wall_oss.chunk_timeout_s` | `120.0` | Wall-clock execution deadline of each `EEChunkAction` (`timeout_s`), not simulated time. |
+| `wall_oss.ik_failure_stop_steps` | `16` | Safety stop: a chunk stops (`stop_reason="safety_stop"`) once either arm's native IK has failed this many consecutive native steps. `null` only counts IK failures, matching the native interface, which keeps the previous joint target of an arm whose IK failed. |
+| `wall_oss.gate` | `none` | Delegation gate. `none`: neutral mechanism-only description, no startup guidance, `instruction` optional (native task instruction by default), actor-chosen `max_policy_steps`, no supervisor. `pickplace_v9`: `instruction` required (the native task wording for the whole rest of the task, or the complete action on one object), the run fixes the call budget, and a camera supervisor ends the call on `monitor_done` / `monitor_takeover`. See [Policy Delegation](../design/policy-delegation.md#gate). |
+| `wall_oss.call_budget_fraction` | `0.8` | `pickplace_v9`: a call may use at most this share of the episode's remaining native budget (`0.05`..`1.0`); the actor keeps the rest as a reserve. |
+| `wall_oss.call_budget_max_steps` | `2000` | `pickplace_v9`: upper bound of a call's native-step budget (`1`..`20000`); `wall_oss.max_policy_steps` does not apply at this gate. |
+| `wall_oss.monitor_every_chunks` | `4` | `pickplace_v9`: chunks between two supervisor checks (`1`..`16`); with `replan_steps=16` the default checks every 64 policy steps. |
+| `wall_oss.monitor_takeover_consecutive` | `1` | `pickplace_v9`: consecutive `takeover` verdicts that end a call (`1`..`20`). |
+| `wall_oss.monitor_model` | `gpt-6.1-sol` | Supervisor model, called through an OpenAI-compatible `/chat/completions` endpoint. |
+| `wall_oss.monitor_base_url` | `null` | http(s) base URL of that endpoint; required at `pickplace_v9` when `features.wall_oss=true`. |
+| `wall_oss.monitor_key_file` | `null` | File holding the supervisor's API key (JSON with `OPENAI_API_KEY`, `api_key` or `API_KEY`, or `KEY=VALUE` lines); the key is never logged. Required at `pickplace_v9` when `features.wall_oss=true`. |
+| `wall_oss.monitor_timeout_s` | `120.0` | Wall-clock bound of one supervisor request (`5`..`600`); a failed check counts as `normal`. |
 
 ## Machine Paths and Image Pipeline
 

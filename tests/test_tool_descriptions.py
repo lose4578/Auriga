@@ -14,7 +14,7 @@ PUBLIC_NAMES = {
     'robot_contact_overlay', 'robot_action_status', 'robot_wait',
     'history_list_actions', 'history_view_observation', 'history_read_trace',
     'history_annotate_action', 'geometry_query', 'program_run', 'program_status',
-    'vision_compare', 'vision_review', 'robot_policy_step', 'depth_query',
+    'vision_compare', 'vision_review', 'robot_policy_step', 'robot_policy_delegate', 'depth_query',
     'robot_action', 'operation_memory',
 }
 
@@ -212,9 +212,11 @@ class ToolDescriptionTests(unittest.TestCase):
             self.assertIn(required, depth)
 
     def test_core_and_frequently_used_tools_are_loaded_initially(self):
+        # robot_policy_delegate is published only when features.wall_oss is on; its description is the
+        # delegation gate the actor decides from, so it is loaded initially rather than behind tool search.
         core = {'task_plan', 'robot_observe', 'robot_action', 'program_run', 'operation_memory',
                 'geometry_query', 'history_view_observation', 'robot_wait',
-                'robot_contact_overlay', 'history_list_actions'}
+                'robot_contact_overlay', 'history_list_actions', 'robot_policy_delegate'}
         for item in public_definitions():
             self.assertEqual(item.get('deferLoading', False), item['name'] not in core, item['name'])
 

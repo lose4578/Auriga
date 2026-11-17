@@ -18,7 +18,8 @@ import time
 import traceback
 import uuid
 
-from auriga.robot.model.arx_contract import FRAME_ID, TCP_CONFIG_ID, validate_action, validate_joint_prefix, validate_preview_action
+from auriga.robot.model.arx_contract import (FRAME_ID, TCP_CONFIG_ID, validate_action, validate_ee_chunk,
+    validate_joint_prefix, validate_preview_action)
 from auriga.robot.backends.robodojo.worker_protocol import WIRE_PREFIX, serve_worker
 from auriga.core.storage.images import camera_path, encode_image, image_settings
 from auriga.core.contracts import MAX_HOLD_NATIVE_STEPS
@@ -217,6 +218,9 @@ class RoboDojoAdapter:
                 "gripper_max_step": self.gripper_step_limit, "motion_duration_limit_s": 10,
                 "eef_gripper_dwell_step": self.eef_gripper_dwell_step,
                 "joint_prefix": {"max_actions": 50, "dimension": 14, "timing": "one official native action per row"},
+                "ee_chunk": {"max_actions": 50, "pose_convention": "xyz_qwxyz", "frame_id": FRAME_ID,
+                             "timing": "one official native action per row",
+                             "native_interface": "eval_env.take_action *_ee_pose keys; per-arm native IK"},
                 "clock_policy": "physics advances only in the worker's bounded execution; paused during agent reasoning",
                 "cancellation": "checked before dispatch and between native actions; native planning is not interruptible",
                 "collision_scope": "native planned endpoint only; feedback target execution does not follow the collision-checked planner trajectory" if feedback else "native robot self-collision and configured static planner table; no task-object or other-arm collision proof",
@@ -546,6 +550,54 @@ class RoboDojoAdapter:
         self.last_dispatched_goals = dict(self.goals)
         self.evaluator_actions = int(self.env.take_action_cnt[0])
         return True
+
+    def _native_ee_action(self, row):
+        """Dispatch one policy-authored EE row through RoboDojo's native EE interface.
+
+        eval_env.take_action infers the "ee" action type from the *_ee_pose keys
+        and solves IK per arm; an arm whose IK fails keeps its previous joint
+        target. The per-arm IK outcome is recorded from that same native call,
+        never re-solved, so the receipt can report it.
+        """
+        if self.env.end_flag[0]:
+            return False
+        statuses, manager = {}, self.robot
+        native_solve, own_attribute = manager.solve_ik, "solve_ik" in vars(manager)
+
+        def recorded_solve(*args, **kwargs):
+            result = native_solve(*args, **kwargs)
+            robot = kwargs.get("robot", args[2] if len(args) > 2 else None)
+            side = robot.arm_name.split("_")[0] if robot is not None else "unknown"
+            statuses[side] = isinstance(result, dict) and result.get("status") == "Success"
+            return result
+
+        manager.solve_ik = recorded_solve
+        try:
+            if hasattr(self, "native_actions_dispatched"):
+                self.native_actions_dispatched += 1
+            self.env.take_action({key: [float(x) for x in value] for key, value in row.items()})
+        finally:
+            if own_attribute:
+                manager.solve_ik = native_solve
+            else:
+                del manager.solve_ik
+            self.last_ee_ik = statuses
+        self.goals = {side: float(self.np.clip(row[side + "_ee_joint_state"][0], 0, 1)) for side in ("left", "right")}
+        self.last_dispatched_goals = dict(self.goals)
+        self.evaluator_actions = int(self.env.take_action_cnt[0])
+        return True
+
+    def native_policy_observation(self):
+        """Native observation dictionary for an external policy; physics does not advance."""
+        self.obs.render_for_capture()
+        return self.obs.get_obs([0])[0]
+
+    def policy_observation(self):
+        """Read-only capture of an external policy's inputs at the current step."""
+        from auriga.robot.motion.ee_chunk_motion import PolicyCaptureWriter
+        writer = PolicyCaptureWriter(self.directory / "policy_captures")
+        writer.add(self.control_step, self.native_policy_observation())
+        return dict(writer.write(), step_domain="adapter_control_step", physics_advanced=False)
 
     def _hold(self):
         # Native execution is synchronous: once it returns there are no queued
@@ -1274,6 +1326,8 @@ class RoboDojoAdapter:
                         "execution_interval": {"start_sim_step": self.control_step, "end_sim_step": self.control_step,
                                                "step_domain": "adapter_control_step"}}
         joint_prefix = action.get("type") == "JointPrefixAction"
+        ee_chunk = action.get("type") == "EEChunkAction"
+        native_policy = joint_prefix or ee_chunk
         if batch_action:
             dual_arm, arm_name, robot = True, "both", None
         elif arm_queue:
@@ -1292,6 +1346,9 @@ class RoboDojoAdapter:
                 if ((values < limits[:, 0] - 1e-5) | (values > limits[:, 1] + 1e-5)).any():
                     raise ValueError("joint_prefix_exceeds_live_joint_limits")
             arm_name, robot = None, None
+        elif ee_chunk:
+            dual_arm, arm_name, robot = False, None, None
+            rows = validate_ee_chunk(action)
         else:
             arm_name, _ = validate_action(action)
             from auriga.core.contracts import validate_dual_arm_progression
@@ -1309,14 +1366,16 @@ class RoboDojoAdapter:
         receipt = {"status": "failed", "reason": None, "before_state": before["robot_state"], "before_observation": before,
             "planned_trace": [], "dispatched_trace": [], "actual_trace": [], "executed_steps": 0, "waypoint_results": [],
             "trace_sampling": {"actual_every_native_actions": 1, "actual_boundary_samples": True},
-            "collision_scope": "native policy joint targets; no planner collision proof" if joint_prefix else self.capabilities()["collision_scope"],
+            "collision_scope": ("native policy joint targets; no planner collision proof" if joint_prefix else
+                                "native policy EE targets solved by native IK; no planner collision proof" if ee_chunk
+                                else self.capabilities()["collision_scope"]),
             "versions": self.versions}
-        if not joint_prefix:
+        if not native_policy:
             receipt.update(speed_scale=action.get("speed_scale", 1.), gripper_speed_scale=action.get("gripper_speed_scale", 1.))
             if robot is not None:
                 receipt["waypoint_speed_scales"] = [self._waypoint_speed_scale(action, index)
                     for index, _ in enumerate(action["path"]["waypoints"])]
-        if not dual_arm and not joint_prefix:
+        if not dual_arm and not native_policy:
             for event in action.get("gripper_events", []):
                 if event["phase"] == "after_motion":
                     receipt.setdefault("gripper_execution", {})[event["arm"]] = {
@@ -1346,12 +1405,12 @@ class RoboDojoAdapter:
                 return True
             return False
 
-        def dispatch(row, waypoint_index=None, *, command_phase="motion", arm_context=None):
+        def dispatch(row, waypoint_index=None, *, command_phase="motion", arm_context=None, native=None):
             if interrupted("execution"):
                 return False
             attempted = evidence.attempted(command_phase, arm_context)
             try:
-                self._native_action(row)
+                (native or self._native_action)(row)
             except Exception:
                 evidence.failed(attempted)
                 raise
@@ -1398,6 +1457,9 @@ class RoboDojoAdapter:
                         break
                 else:
                     receipt.update(status="completed", reason=None)
+            elif ee_chunk:
+                from auriga.robot.motion.ee_chunk_motion import execute_ee_chunk
+                execute_ee_chunk(self, action, rows, receipt, segments, progress, dispatch)
             elif batch_action:
                 from auriga.robot.motion.batch_motion import execute_batch
                 execute_batch(self, action, cached_batch, receipt, segments, progress, interrupted, dispatch)

@@ -33,6 +33,7 @@ assert (static_directory() / "index.html").is_file()
 assert (static_directory() / "app.js").is_file()
 assert (package / "runtime/policy/policy_workers/pi05_arx_manifest.json").is_file()
 assert (package / "runtime/policy/policy_workers/pi05_arx_client.py").is_file()
+assert (package / "runtime/policy/policy_workers/xpolicylab_ws_client.py").is_file()
 assert (package / "core/default_config.json").is_file()
 catalog = json.loads(CATALOG_PATH.read_text())
 assert catalog['version'] == 2 and len(catalog['tasks']) == 54

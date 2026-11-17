@@ -2,6 +2,9 @@
 import math
 
 MAX_HOLD_NATIVE_STEPS = 50
+# Rows authored by an external learned policy in its own native action space.
+# Harness speed presets, dual-arm progression and EE path options never retime them.
+NATIVE_POLICY_ACTION_TYPES = frozenset({"JointPrefixAction", "EEChunkAction"})
 
 
 def arm_action(action, arm):
@@ -148,7 +151,7 @@ def validate_arm_options(action, allowed_fields, capabilities=None):
     """Per-arm speeds apply to each complete own route, paired or independent."""
     options = action.get("arm_options")
     path = action.get("path")
-    if (action.get("type") == "JointPrefixAction" or "hold_native_steps" in action
+    if (action.get("type") in NATIVE_POLICY_ACTION_TYPES or "hold_native_steps" in action
             or not isinstance(path, dict) or path.get("kind") != "backend_free"):
         raise ValueError("arm_options_requires_dual_arm_motion")
     if not dual_path_shape(action):
@@ -195,7 +198,7 @@ def validate_action_speed(value, capabilities=None):
     fields = {"speed_scale": (.25, 2.), "gripper_speed_scale": (.25, 1.)}
     present = set(fields).intersection(value)
     has_waypoint_speeds = "waypoint_speed_scales" in value
-    if (present or has_waypoint_speeds) and (value.get("type") == "JointPrefixAction" or "hold_native_steps" in value):
+    if (present or has_waypoint_speeds) and (value.get("type") in NATIVE_POLICY_ACTION_TYPES or "hold_native_steps" in value):
         raise ValueError("action_speed_unsupported_for_wait_or_joint_prefix")
     if "speed_scale" in present and (not isinstance(value.get("path"), dict)
                                      or value["path"].get("kind") != "backend_free"):

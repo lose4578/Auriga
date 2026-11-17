@@ -59,6 +59,8 @@ def serve_worker(adapter_factory, arguments, emit):
                 result = adapter.capabilities()
             elif operation == "observe":
                 result = adapter.observe()
+            elif operation == "policy_observation":
+                result = adapter.policy_observation()
             elif operation == "preview_motion":
                 result = adapter.preview_motion(request["payload"])
             elif operation == "preview_batch":

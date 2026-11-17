@@ -133,6 +133,11 @@ class RobotBackend(RobotProcess):
         with self.operation_lock:
             return self._request("observe")
 
+    def policy_observation(self):
+        """External policy inputs at the current step (npz in the worker run dir); no physics."""
+        with self.operation_lock:
+            return self._request("policy_observation")
+
     def validate_reset(self, seed=0, layout_id=0):
         """Read-only preflight; a refusal leaves the current worker and world intact."""
         if any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in (seed, layout_id)):

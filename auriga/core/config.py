@@ -182,6 +182,8 @@ class FeaturesConfig(Section):
     recovery_evidence: bool = True
     action_trajectory_delivery: str = option('automatic', choices=('automatic', 'diagnostic'))
     pi05: bool = False
+    # Whole-subtask delegation to WALL-OSS via XPolicyLab (tool robot_policy_delegate); see [wall_oss].
+    wall_oss: bool = False
     visual_review_model: str | None = option(None, choices=('gpt-6.1-sol',))
     completion_guidance: str = option('hook', choices=('none', 'initial', 'hook', 'both'))
     disabled_tools: tuple[str, ...] = ()
@@ -297,6 +299,40 @@ class PolicyConfig(Section):
     python: str = option('~/.local/share/auriga-openpi-arx/bin/python', path=True)
     checkpoint: str = option('/home/ckpt/robodojo_pi05_official/ckpt/RoboDojo/Pi_05/RoboDojo-sim-arx_x5-joint-0/59999', path=True)
     server_url: str | None = None
+
+
+@dataclass(frozen=True)
+class WallOssConfig(Section):
+    """XPolicyLab WallX server and closed-loop bounds for robot_policy_delegate."""
+    server_url: str | None = None
+    # Extra equivalent servers; each episode connects to one of server_url + server_urls chosen by a stable hash of run_id.
+    server_urls: tuple[str, ...] = ()
+    # Interpreter with numpy, msgpack and websockets for the isolated client; null = gateway Python. Absolute path,
+    # deliberately not resolved: a virtualenv's bin/python is a symlink and resolving it would drop the venv.
+    python: str | None = None
+    # Gate none: per-call budget when the actor omits max_policy_steps, and the upper bound of an actor-chosen budget.
+    default_policy_steps: int = option(200, minimum=1, maximum=400)
+    max_policy_steps: int = option(400, minimum=1, maximum=400)
+    replan_steps: int = option(16, minimum=1, maximum=48)
+    timeout_s: float = option(60.0, minimum=1.0, maximum=600.0)
+    chunk_timeout_s: float = option(120.0, minimum=1.0, maximum=300.0)
+    ik_failure_stop_steps: int | None = option(16, minimum=1, maximum=50)
+    # Delegation gate (cortex/context/delegation_gate.py): 'none' = neutral description, actor-chosen budget, no
+    # supervisor; 'pickplace_v9' = actor-written instruction, budget fixed by the run, camera supervisor.
+    gate: str = option('none', choices=('none', 'pickplace_v9'))
+    # pickplace_v9: a call may use at most call_budget_fraction of the episode's remaining native budget (the actor keeps
+    # the rest as a reserve), and at most call_budget_max_steps steps.
+    call_budget_max_steps: int = option(2000, minimum=1, maximum=20000)
+    call_budget_fraction: float = option(0.8, minimum=0.05, maximum=1.0)
+    # pickplace_v9 camera supervisor (runtime/policy/progress_monitor.py): every monitor_every_chunks chunks one stateless
+    # chat/completions request (monitor_model at monitor_base_url, key read from monitor_key_file) answers normal / done /
+    # takeover; the call stops on done or after monitor_takeover_consecutive takeover verdicts in a row.
+    monitor_every_chunks: int = option(4, minimum=1, maximum=16)
+    monitor_takeover_consecutive: int = option(1, minimum=1, maximum=20)
+    monitor_model: str = 'gpt-6.1-sol'
+    monitor_base_url: str | None = None
+    monitor_key_file: str | None = None
+    monitor_timeout_s: float = option(120.0, minimum=5.0, maximum=600.0)
 
 
 @dataclass(frozen=True)
@@ -637,6 +673,7 @@ class Config(Section):
     model: ModelConfig = field(default_factory=ModelConfig)
     backend: BackendConfig = field(default_factory=BackendConfig)
     policy: PolicyConfig = field(default_factory=PolicyConfig)
+    wall_oss: WallOssConfig = field(default_factory=WallOssConfig)
     images: ImagesConfig = field(default_factory=ImagesConfig)
     library: LibraryConfig = field(default_factory=LibraryConfig)
     scene: SceneConfig = field(default_factory=SceneConfig)
@@ -670,6 +707,22 @@ class Config(Section):
             raise ConfigError('depth_features_require_rgbd_observation_profile')
         if self.features.depth_event_payload and not self.features.depth_auto_feedback:
             raise ConfigError('depth_event_payload_requires_depth_auto_feedback')
+        if self.features.wall_oss and not self.wall_oss.server_url:
+            raise ConfigError('wall_oss_requires_server_url')
+        if any(url is not None and not url.startswith(('ws://', 'wss://'))
+               for url in (self.wall_oss.server_url, *self.wall_oss.server_urls)):
+            raise ConfigError('wall_oss_server_url_requires_websocket_url')
+        if self.wall_oss.server_urls and not self.wall_oss.server_url:
+            raise ConfigError('wall_oss_server_urls_require_server_url')
+        if self.wall_oss.python is not None and not self.wall_oss.python.startswith('/'):
+            raise ConfigError('wall_oss_python_requires_absolute_path')
+        if self.wall_oss.default_policy_steps > self.wall_oss.max_policy_steps:
+            raise ConfigError('wall_oss_default_policy_steps_exceeds_max_policy_steps')
+        if self.wall_oss.gate == 'pickplace_v9' and self.features.wall_oss:
+            if not (self.wall_oss.monitor_base_url or '').startswith(('http://', 'https://')):
+                raise ConfigError('wall_oss_monitor_requires_http_base_url')
+            if not self.wall_oss.monitor_key_file:
+                raise ConfigError('wall_oss_monitor_requires_key_file')
         if 0 < self.images.trim_max_inline_images < 24:
             raise ConfigError('trim_max_inline_images_requires_0_or_at_least_24')
         if self.features.observation_profile == 'rgb_proprio_v1' and self.features.motion_review:
