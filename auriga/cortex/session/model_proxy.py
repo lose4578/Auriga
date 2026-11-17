@@ -1,13 +1,17 @@
-"""Buffered Responses relay: no request deadline, bounded provider-error retries.
+"""Buffered model relay: no request deadline, bounded provider-error retries.
 
 Actor, helper and compact completions share the budget. Attempts and unknown usage
 are private evidence; no partial model/tool output is released before validation.
+Generic policy lives here; everything that depends on the provider wire format
+(routes, SSE terminals, error tables, images, denial payloads) is a ``WireAdapter``
+(``wire/``; default ``OpenAIResponsesWire``, the Codex Responses wire). The adapter's client
+profile decides the delivery form (early 200 + keepalive, or deferred delivery) and whether the
+client-retry runaway guard and the consume guard run; see ``wire.base.ClientProfile``.
 """
 import base64
 import hashlib
 import http.client
 import json
-import math
 import os
 from pathlib import Path
 import queue
@@ -19,31 +23,117 @@ import subprocess
 import sys
 import threading
 import time
+from typing import NamedTuple
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
+if __package__:
+    from ..agents.context_signal import MAIN as MAIN_CALL, ContinuityTracker
+    from .wire import OpenAIResponsesWire, WireAdapter, wire_from_name
+else:  # ``--http-worker`` runs this file as a script: import the adapters of this same checkout.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+    from auriga.cortex.agents.context_signal import MAIN as MAIN_CALL, ContinuityTracker
+    from auriga.cortex.session.wire import OpenAIResponsesWire, WireAdapter, wire_from_name
+CODEX_PROFILE_NAME = "codex"
+# Discontinuity reason when the provider reports a server-side context edit on a delivered main answer
+# (``WireAdapter.context_edit_applied``); the other reasons come from ``ContinuityTracker``.
+PROVIDER_CONTEXT_EDIT = "provider_context_edit"
+
 HOP_HEADERS = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
                "te", "trailer", "transfer-encoding", "upgrade", "host", "content-length"}
-PRIVATE_HEADERS = {"x-auriga-deadline-unix-ms", "x-auriga-source", "x-auriga-request-id"}
-AUTH_HEADERS = {"authorization": "Authorization", "chatgpt-account-id": "ChatGPT-Account-Id"}
+# X-Auriga-Thread: native thread key of a host-side client (the relay evidence client), read before the
+# wire's own thread key; like every private header it is never forwarded upstream.
+PRIVATE_HEADERS = {"x-auriga-deadline-unix-ms", "x-auriga-source", "x-auriga-request-id", "x-auriga-thread"}
+AUTH_HEADERS = dict(OpenAIResponsesWire.auth_header_names)
 CLIENT_AUTH_HEADERS = set(AUTH_HEADERS) | {"cookie", "x-api-key", "api-key", "openai-organization", "openai-project"}
 DEFAULT_MAX_RETRIES = 12  # Pinned RoboProbe joint-policy default; excludes the first attempt.
 RETRY_POLICY = "bounded_harness_retry_after_explicit_retryable_provider_error"
 TRANSPORT_RECOVERY_KEYS = frozenset(("max_rounds", "initial_delay_s", "backoff_multiplier", "max_delay_s",
                                      "max_episode_delay_s", "transport_incomplete"))
 MIN_TRIM_IMAGE_LIMIT = 24
+MAX_CLIENT_BODY_BYTES = 128 * 1024 * 1024  # declared client request body bound (bytes)
+# Seconds a refused request's declared body may take to arrive while the relay drains it before
+# answering (so the client reads the refusal instead of a broken pipe); then the answer is sent anyway.
+REFUSAL_DRAIN_TIMEOUT_S = 30.0
+# Seconds one auxiliary forward (Anthropic count_tokens) may take end to end; it is never retried.
+AUX_REQUEST_TIMEOUT_S = 120.0
+ACTOR_UPSTREAM = "actor"          # name of the default binding (constructor wire, URL and credentials)
+UPSTREAM_PREFIX = "/_auriga/u/"   # path prefix of a named binding: /_auriga/u/<name><wire route>
+UPSTREAM_NAME = re.compile(r"[a-z][a-z0-9_-]{0,31}")
 
 
-def upstream_auth_headers_copy(headers):
-    """Freeze host credentials without putting their values in validation errors."""
+class UpstreamBinding(NamedTuple):
+    """One upstream the relay fronts (``ModelRequestProxy.add_upstream``).
+
+    name: ``"actor"`` for the default binding, else the name given to ``add_upstream``.
+    wire: the binding's ``WireAdapter`` (routes, terminals, errors, denials of its requests).
+    upstream_url: upstream base URL (no trailing slash).
+    auth_headers: host credential headers sent upstream (validated against
+        ``wire.auth_header_names``), or None to forward none.
+    client_auth_headers: lower-case header names stripped from client requests before the
+        binding's credentials are added.
+    presentation: ``ActorPresentation`` the egress projection of a named binding uses (None for
+        the default binding, whose projection is the ``request_projection`` hook).
+    prefix: path prefix of the binding on the relay (``""`` for the default binding).
+    """
+    name: str
+    wire: object
+    upstream_url: str
+    auth_headers: object
+    client_auth_headers: frozenset
+    presentation: object = None
+    prefix: str = ""
+
+
+class IdleRun(NamedTuple):
+    """Consume-guard state of one main thread (``ModelRequestProxy``, "Consume guard"), replaced on every
+    delivered usable main completion of the thread.
+
+    items: number of conversation items of that delivered request (``history_fingerprints`` length).
+    last_blocks: number of content blocks of its last item (0 when it had no item).
+    idle: how many delivered main completions in a row, ending with this one, were requests that added
+        no client input to the history of the delivered request before them.
+    """
+    items: int
+    last_blocks: int
+    idle: int
+
+
+class ContinuityAdmission(NamedTuple):
+    """``ModelRequestProxy._observe_continuity`` result for one actor generation request.
+
+    call_purpose: ``"main"``, ``"helper"`` or ``"subagent"`` (``context_signal``), committed with the request.
+    idle: consume-guard verdict of a compared main request: True when it adds no client input after the
+        thread's last delivered main completion, False when it adds some (or rewrote the history); None
+        when it was not compared (guard off, not a main request, or no delivered main completion yet).
+    refused: the thread's count of consecutive idle delivered completions when the consume guard refuses
+        this request, else None.
+    """
+    call_purpose: str
+    idle: bool | None
+    refused: int | None
+
+
+# Compatibility delegates below (module functions and ModelRequestProxy static/class methods)
+# keep the c4ff16a names working; they all use this Responses adapter.
+_RESPONSES = OpenAIResponsesWire()
+
+
+def upstream_auth_headers_copy(headers, names=None):
+    """Freeze host credentials without putting their values in validation errors.
+
+    names: lower-case → canonical allowed credential header names; default ``AUTH_HEADERS``
+    (the Responses wire). A relay passes its wire's ``auth_header_names``.
+    """
+    names = AUTH_HEADERS if names is None else names
     if headers is None:
         return None
     if not isinstance(headers, dict):
         raise ValueError("invalid_upstream_auth_headers")
     copied = {}
     for name, value in headers.items():
-        key = AUTH_HEADERS.get(name.lower()) if isinstance(name, str) else None
+        key = names.get(name.lower()) if isinstance(name, str) else None
         if (key is None or key in copied or not isinstance(value, str) or not 0 < len(value) <= 16384
                 or any(ord(char) < 32 or ord(char) > 126 for char in value)):
             raise ValueError("invalid_upstream_auth_headers")
@@ -51,20 +141,20 @@ def upstream_auth_headers_copy(headers):
     return copied
 
 
+def _request_target(url):
+    """Request target for ``http.client``: path plus the query string the wire kept (e.g.
+    Anthropic ``?beta=true``). Codex routes carry no query, so their target is the bare path."""
+    return url.path + ("?" + url.query if url.query else "")
+
+
 def _terminal_sse_type(block):
-    data = b"\n".join(line[5:].lstrip(b" ") for line in block.splitlines() if line.startswith(b"data:"))
-    if not data or data == b"[DONE]":
-        return None
-    try:
-        value = json.loads(data)
-    except (ValueError, UnicodeDecodeError):
-        return None
-    event_type = value.get("type") if isinstance(value, dict) else None
-    return event_type if event_type in {"response.completed", "response.failed", "response.incomplete", "error"} else None
+    """Compatibility delegate: ``OpenAIResponsesWire.terminal_sse_type``."""
+    return _RESPONSES.terminal_sse_type(block)
 
 
 def _terminal_sse_block(block):
-    return _terminal_sse_type(block) is not None
+    """Compatibility delegate: a Responses terminal SSE block (used by ``reference_api``)."""
+    return _RESPONSES.terminal_sse_type(block) is not None
 
 
 def _kill(process):
@@ -129,8 +219,14 @@ class _InProcessAttempt:
 
 
 def _http_worker():
-    """One HTTP attempt in an independently killable process; stdout is a pipe."""
+    """One HTTP attempt in an independently killable process; stdout is a pipe.
+
+    The JSON payload names the relay's wire (``"wire"``, default ``openai_responses``) and,
+    for wires other than Codex Responses, its client profile (``"client"``); the wire decides
+    where the buffered stream ends.
+    """
     payload = json.load(sys.stdin)
+    wire = wire_from_name(payload.get("wire", OpenAIResponsesWire.name), client=payload.get("client"))
     started = time.monotonic()
     def event(kind, **fields):
         print(json.dumps(dict(kind=kind, wall_time=time.time(), elapsed_s=time.monotonic()-started, **fields)), flush=True)
@@ -147,7 +243,7 @@ def _http_worker():
         event("model_upstream_connected")
         phase = "sending_upstream_body"
         event("model_attempt_phase", phase=phase)
-        connection.request("POST", url.path, body=body, headers=payload["headers"])
+        connection.request("POST", _request_target(url), body=body, headers=payload["headers"])
         event("model_request_forwarded", body_bytes=len(body), body_sha256=hashlib.sha256(body).hexdigest())
         phase = "awaiting_response_headers"
         event("model_attempt_phase", phase=phase)
@@ -166,7 +262,7 @@ def _http_worker():
             pending += chunk
             while match := re.search(br"\r?\n\r?\n", pending):
                 block, pending = pending[:match.start()], pending[match.end():]
-                if _terminal_sse_block(block):
+                if wire.terminal_sse_type(block) is not None:
                     terminal_seen = True
                     if pending:
                         del raw[-len(pending):]
@@ -189,14 +285,154 @@ def _http_worker():
 
 
 class ModelRequestProxy:
+    """Loopback model relay owning the episode's generic model-call policy.
+
+    wire: ``WireAdapter`` for the agent's provider format (default ``OpenAIResponsesWire()``,
+        the Codex Responses wire); it decides routes, terminals, errors, images and denials.
+    default_thread_id: thread id attributed to a request whose wire thread key is empty or
+        unregistered (non-Codex sessions set their own thread id); default None keeps the
+        Codex behaviour (attribution only by the ``thread-id`` header).
+    on_context_discontinuity: optional callback ``(reason)`` called when the relay detects that the
+        agent's model no longer holds context it was given (see "Continuity tracking"); default
+        None (nothing is called, the relay-side effects still apply).
+    All other keywords are unchanged from earlier versions.
+
+    Continuity tracking (design §4.3 and Revision 4 R4.3; only for adapters whose client profile is
+    not ``codex``, so the Codex relay is unchanged): ``continuity`` is a ``ContinuityTracker``. Its
+    tracker inputs (``wire.continuity_inputs``) are computed once per actor-binding generation call,
+    on the body after the ``request_context``/``request_projection`` hooks and before the relay's own
+    image trim/reuse (a body the relay trimmed itself would look like a rewrite), and admitted under
+    ``lock``. The tracker's thread is the native key the client sent (``X-Auriga-Thread``, else
+    ``wire.thread_key``); only an empty key falls back to ``default_thread_id``. Attribution
+    (``identity.native_thread_id``) is unchanged and still maps an unregistered key to
+    ``default_thread_id``, but the tracker keeps such a key (an OpenCode child session) apart. Main
+    threads are ``default_thread_id`` and every thread registered with source ``"actor"``; when the
+    relay has neither, every thread is a main thread. The admission sets
+    ``identity.call_purpose``: ``"helper"`` (no tools declared), ``"main"`` (the main chain of a main
+    thread) or ``"subagent"`` (any other request with tools: a different system text on a main
+    thread, or any thread that is not a main thread; see ``context_signal``). It is evidence only
+    and never changes counting. Because the body is needed, ``call_purpose`` is carried by every
+    event of the call recorded after the admission (``model_context_discontinuity``,
+    ``model_context_discontinuity_callback_failed``, ``model_images_trimmed``,
+    ``model_images_reused``, the per-attempt ``model_request_*`` events, ``model_request_retry``,
+    ``model_transport_*``, ``model_client_did_not_consume_completion``, ``model_call_cancelled``,
+    ``model_call_completed``, ``model_call_failed``, ``model_call_finished``), but never by
+    ``model_call_started`` or ``model_request_body_received`` (recorded before the body is
+    decoded), and not by a call refused or failed before the admission
+    (runaway denial, undecodable body). Named bindings and Codex calls carry no ``call_purpose``.
+    Only main requests are compared. A main request's baseline advances (``commit`` with the same
+    inputs and its admitted purpose) only when that request's completion was delivered to the client
+    as usable. Helper and subagent requests never report a discontinuity and never move a baseline,
+    so a subagent's own compaction never starts an image-context epoch. A discontinuity of a main
+    request (``history_shortened``, ``history_rewritten``, ``images_removed``, ``system_changed``, or
+    ``provider_context_edit`` when its usable answer reports a server-side context edit) has the
+    synchronous effects of a Responses ``/responses/compact`` admission: ``image_context_epoch``
+    becomes the call's ``logical_call_id``, the thread's image-trim window is reset, and one
+    ``model_context_discontinuity`` event (identity + ``reason``) is recorded, all under ``lock``.
+    Then, still before the request is forwarded but outside ``lock`` (the callback may take its
+    session's own lock), ``on_context_discontinuity(reason)`` is called; a callback exception is
+    recorded as ``model_context_discontinuity_callback_failed`` and never fails the request.
+
+    Routes come from ``wire.route``: generation routes take the full budgeted path; auxiliary
+    routes (Anthropic ``count_tokens``) are projected with ``request_projection`` (refused with
+    ``wire.relay_error`` when no projection hook is set: a raw body never leaves the host),
+    forwarded once with host credentials and an ``AUX_REQUEST_TIMEOUT_S`` deadline (``close()``
+    interrupts it), never charged or retried, and recorded as one ``model_aux_request`` event;
+    an upstream HTTP error is answered with the sanitised ``wire.relay_error``, never passed
+    through. Local/unknown routes get ``wire.not_found()``. Every refusal (denials, unknown
+    routes) first drains the declared request body (at most ``MAX_CLIENT_BODY_BYTES``, for at
+    most ``REFUSAL_DRAIN_TIMEOUT_S`` seconds) so a client still writing a large body reads the
+    refusal instead of a broken pipe.
+
+    Cancellation tombstones on non-``codex`` client profiles: ``cancel_pending(reason)`` also
+    tombstones the native thread of every call it cancels (as ``cancel_thread`` does), so a client
+    that re-sends after the cancellation gets ``wire.denial("thread_cancelled")`` instead of a new
+    forwarded and charged call. Such a tombstone is lifted by ``reopen_thread(thread_id)`` or by
+    ``register_thread`` of the same thread (the session does this when it starts its next turn);
+    ``cancel_thread`` tombstones stay permanent. ``cancel_pending(reason, threads=[...])`` puts the
+    same reopenable tombstone on further threads with no call in flight (a session's own threads at
+    an interrupt). The Codex relay keeps its behaviour (no tombstone from ``cancel_pending``).
+
+    Upstream bindings (design §4.1 "Upstream bindings"): the constructor's wire, URL and
+    credentials are the ``"actor"`` binding (unprefixed routes). ``add_upstream`` adds named
+    bindings served under ``/_auriga/u/<name>`` so that a host-side helper on another wire or
+    credential (the relay evidence client) shares this relay's budget, event stream, retry and
+    recovery policy and blocked-transport gate. A named binding's requests use only its own wire,
+    URL and credentials, always pass ``binding.wire.project_request`` with the binding's
+    presentation (the ``request_context`` / ``request_projection`` hooks, ``service_tier``,
+    continuity tracking and image trim/reuse belong to the actor binding only), and carry
+    ``identity.upstream = <name>`` (actor-binding events carry no ``upstream`` key, so Codex events
+    are unchanged). A host-side client names its native thread with the private header
+    ``X-Auriga-Thread`` (read before the wire's thread key; never forwarded).
+
+    Client-retry runaway guard (only for adapters whose profile sets ``client_loop_guard``):
+    transport protection, not task logic. OpenCode re-sent one generation body 45-970 times
+    within 1-14 s (about 10 ms apart) when a stream ended without a terminal (spike S6.9); no
+    supported client re-sends a byte-identical generation body more than a few times (Claude
+    Code's 400 beta-downgrade re-sends are at most two, and every delivered answer changes the
+    next body). When a thread's consecutive generation bodies stay byte-identical for more than
+    ``RUNAWAY_MAX_IDENTICAL_ADMISSIONS`` admissions within ``RUNAWAY_WINDOW_S`` seconds, the
+    transport is blocked (``error_type="ClientRetryRunaway"``, operator may authorise a manual
+    retry) and that request gets ``wire.denial("client_retry_runaway")`` without being forwarded
+    or charged. The same profiles get ``SHUTDOWN_TERMINAL_GRACE_S`` seconds on ``close()`` for
+    every open client stream to receive its ``relay_error`` before its socket is closed.
+
+    Consume guard (same profiles; transport protection, not task logic): an agent client asks the
+    model again only when it has something new for it, a tool result or a user/steer message, so a
+    main request (see "Continuity tracking") whose history adds nothing but the model's own earlier
+    output (``wire.history_model_output_flags``) to the history of the thread's last delivered main
+    completion is *idle*: the client did not act on the completion it was given. Observed (T12, opencode
+    1.19.5): when the provider's usage holds a value the client's SDK cannot parse (``input_tokens:
+    null``), every answer is validated, delivered and charged, but OpenCode cannot finish the step and
+    re-requests at once, on the Responses wire with the delivered text appended and no input (the whole
+    180-call budget in about 4 s), on the Anthropic wire with the unchanged history after a backoff.
+    Every such re-request has a different body, so the runaway guard cannot see it, and with a real
+    provider it is paced by the provider's latency, so no rate window can either. The rule therefore
+    counts content, not time: after ``CONSUME_GUARD_MAX_IDLE_COMPLETIONS`` delivered main completions in
+    a row whose requests were idle, the next idle main request on the thread blocks the transport
+    (``error_type="ClientDidNotConsumeCompletion"``, evidence ``classification=
+    "client_did_not_consume_completion"`` with ``idle_completions``, event
+    ``model_client_did_not_consume_completion``; an operator may authorise a manual retry) and gets the
+    client-loop refusal ``wire.denial("client_retry_runaway")`` without being forwarded or charged. A
+    request that adds a client item, appends blocks to the last client item, or has a continuity
+    discontinuity (compaction, prune, ...) ends the run; helper and subagent requests are not compared. The
+    state is one ``IdleRun`` per main thread, replaced together with the continuity baseline on each
+    delivered usable main completion, so failed, denied or cancelled requests never count. Residuals: a
+    client that appends a note of its own to every re-request is adding input and is not detected;
+    a loop confined to a subagent chain is not compared (both stay bounded by the budget and the
+    runaway guard).
+    """
+    RUNAWAY_MAX_IDENTICAL_ADMISSIONS = 8  # identical consecutive bodies tolerated on one thread
+    RUNAWAY_WINDOW_S = 2.0                # seconds the identical admissions must fall within
+    # Consume guard: idle delivered main completions in a row tolerated on one thread before the next idle
+    # request is refused. Normal sessions produce none (0 of 386 compared main requests of the 89 captured
+    # Claude Code / OpenCode sequences in tests/fixtures/continuity, and none in the conformance suites);
+    # 3 leaves room for short legitimate continuations without new input (Anthropic ``pause_turn``, which only
+    # server-side tools produce and those are removed with online access; a finish reason a client does not map)
+    # and bounds an unparseable-answer loop at 4 charged completions (1 + 3) instead of the whole budget.
+    CONSUME_GUARD_MAX_IDLE_COMPLETIONS = 3
+    SHUTDOWN_TERMINAL_GRACE_S = 2.0       # seconds close() waits for cancelled handlers' terminals
     def __init__(self, upstream_url, *, max_requests=180, request_timeout_s=None, max_retries=None,
                  on_event=None, on_limit=None, metrics_path=None, image_reuse=False,
                  image_trim=True, request_projection=None, upstream_auth_headers=None, request_context=None,
-                 max_inline_images=0, transport_recovery=None, recovery_gate=None):
-        self._upstream_auth_headers = upstream_auth_headers_copy(upstream_auth_headers)
-        url = urlsplit(upstream_url)
-        if url.scheme not in ("http", "https") or not url.hostname or url.username or url.password or url.query or url.fragment:
-            raise ValueError("model_proxy_requires_http_base_url_without_credentials_or_query")
+                 max_inline_images=0, transport_recovery=None, recovery_gate=None,
+                 wire=None, default_thread_id=None, on_context_discontinuity=None):
+        if wire is not None and not isinstance(wire, WireAdapter):
+            raise ValueError("model_proxy_wire_requires_adapter")
+        self.wire = OpenAIResponsesWire() if wire is None else wire
+        if default_thread_id is not None and (not isinstance(default_thread_id, str) or not default_thread_id
+                                              or len(default_thread_id) > 256 or "\n" in default_thread_id
+                                              or "\r" in default_thread_id):
+            raise ValueError("model_proxy_invalid_default_thread_id")
+        self.default_thread_id = default_thread_id
+        self.service_tier = None
+        if on_context_discontinuity is not None and not callable(on_context_discontinuity):
+            raise ValueError("model_proxy_context_discontinuity_requires_callable")
+        self.on_context_discontinuity = on_context_discontinuity
+        self.continuity = None if self.wire.client == CODEX_PROFILE_NAME else ContinuityTracker()
+        self._upstream_auth_headers = upstream_auth_headers_copy(upstream_auth_headers, self.wire.auth_header_names)
+        self._client_auth_headers = frozenset(CLIENT_AUTH_HEADERS) | frozenset(self.wire.auth_header_names)
+        self._check_upstream_url(upstream_url)
         if type(max_requests) is not int or max_requests < 1:
             raise ValueError("model_proxy_invalid_request_budget")
         if request_timeout_s is not None:
@@ -229,6 +465,7 @@ class ModelRequestProxy:
             raise ValueError("model_proxy_request_context_requires_callable")
         self.request_context = request_context
         self.upstream_url = upstream_url.rstrip("/")
+        self._upstreams = {}  # name -> UpstreamBinding of add_upstream (the actor binding is built on demand)
         self.max_requests, self.request_timeout_s = max_requests, None
         self.on_event, self.on_limit = on_event, on_limit
         self.metrics_path = Path(metrics_path) if metrics_path else None
@@ -245,6 +482,11 @@ class ModelRequestProxy:
         self.thread_owners, self.cancelled_threads = {}, {}
         self._image_trim_watermarks = {}
         self._image_trim_starts = {}
+        self._runaway_runs = {}
+        self._idle_runs = {}  # consume guard: tracker thread -> IdleRun (client_loop_guard profiles only)
+        self._reopenable_threads = set()  # tombstones set by cancel_pending (non-Codex), liftable
+        self._aux_connections = set()     # in-flight auxiliary upstream connections (close() interrupts)
+        self.aux_request_count = 0
         self._recovery_rounds = self._recovered_calls = self._recovery_denials = 0
         self._recovery_delay_s = 0.0
         self._wait_started_at = None
@@ -257,6 +499,85 @@ class ModelRequestProxy:
         self.callback_thread = None
         self._conn_pool = {}
         self._conn_pool_lock = threading.Lock()
+
+    @staticmethod
+    def _check_upstream_url(upstream_url):
+        url = urlsplit(upstream_url) if isinstance(upstream_url, str) else None
+        if (url is None or url.scheme not in ("http", "https") or not url.hostname or url.username or url.password
+                or url.query or url.fragment):
+            raise ValueError("model_proxy_requires_http_base_url_without_credentials_or_query")
+
+    @property
+    def actor_binding(self):
+        """The default ``UpstreamBinding`` (constructor wire, ``upstream_url`` and credentials). Built
+        from the current attributes, so tests that repoint ``upstream_url`` keep working."""
+        return UpstreamBinding(ACTOR_UPSTREAM, self.wire, self.upstream_url, self._upstream_auth_headers,
+                               self._client_auth_headers)
+
+    def add_upstream(self, name, *, wire, upstream_url, upstream_auth_headers, presentation):
+        """Front one more upstream on this relay (host only, before the agent can reach it).
+
+        name: binding name, ``[a-z][a-z0-9_-]{0,31}``, not ``"actor"``, unique.
+        wire: the binding's ``WireAdapter`` instance (its own client profile).
+        upstream_url: http(s) base URL without credentials, query or fragment.
+        upstream_auth_headers: host credential headers for this upstream only (validated against
+            ``wire.auth_header_names``; never sent to another binding), or None.
+        presentation: the session's ``ActorPresentation``; every request of the binding passes
+            ``wire.project_request(request, presentation, registered_tools=frozenset(),
+            tool_name_prefix="")`` (no tools are declared on helper bindings).
+        Returns the binding's base URL ``http://127.0.0.1:<port>/_auriga/u/<name>`` when the relay is
+        started, else None (``upstream_base_url(name)`` gives it after ``start()``).
+        """
+        if not isinstance(name, str) or not UPSTREAM_NAME.fullmatch(name) or name == ACTOR_UPSTREAM:
+            raise ValueError("model_proxy_invalid_upstream_name")
+        if not isinstance(wire, WireAdapter):
+            raise ValueError("model_proxy_wire_requires_adapter")
+        if presentation is None:
+            raise ValueError("model_proxy_upstream_requires_presentation")
+        self._check_upstream_url(upstream_url)
+        binding = UpstreamBinding(name, wire, upstream_url.rstrip("/"),
+                                  upstream_auth_headers_copy(upstream_auth_headers, wire.auth_header_names),
+                                  frozenset(CLIENT_AUTH_HEADERS) | frozenset(wire.auth_header_names),
+                                  presentation, UPSTREAM_PREFIX + name)
+        with self.lock:
+            if self.closed:
+                raise ValueError("model_proxy_already_started_or_closed")
+            if name in self._upstreams:
+                raise ValueError("model_proxy_upstream_already_bound")
+            self._upstreams[name] = binding
+        self._record("model_upstream_bound", upstream=name, wire_api=wire.name, relay_profile=wire.client,
+                     credentials=sorted(binding.auth_headers or ()))
+        return self.upstream_base_url(name)
+
+    def upstream_base_url(self, name):
+        """Relay base URL a host-side client uses for binding ``name`` (``"actor"``: the unprefixed
+        ``base_url``), or None before ``start()``. Raises ``KeyError`` for an unknown binding."""
+        if name != ACTOR_UPSTREAM:
+            with self.lock:
+                if name not in self._upstreams:
+                    raise KeyError(name)
+        if self.base_url is None:
+            return None
+        return self.base_url if name == ACTOR_UPSTREAM else self.base_url + UPSTREAM_PREFIX + name
+
+    def upstream_binding(self, name):
+        """``UpstreamBinding`` for ``name`` (``"actor"`` included); ``KeyError`` when unknown."""
+        if name == ACTOR_UPSTREAM:
+            return self.actor_binding
+        with self.lock:
+            return self._upstreams[name]
+
+    def _binding_for_path(self, raw_path):
+        """``(binding, path_within_binding)`` for a client request target; ``(None, None)`` for a
+        ``/_auriga/u/`` path naming no binding."""
+        if not isinstance(raw_path, str) or not raw_path.startswith(UPSTREAM_PREFIX):
+            return self.actor_binding, raw_path
+        name, slash, rest = raw_path[len(UPSTREAM_PREFIX):].partition("/")
+        with self.lock:
+            binding = self._upstreams.get(name)
+        if binding is None or not slash:
+            return None, None
+        return binding, "/" + rest
 
     @staticmethod
     def _socket_alive(conn):
@@ -337,7 +658,9 @@ class ModelRequestProxy:
                 except OSError:
                     pass
 
-    def _inprocess_http(self, attempt, identity, url_str, body, headers, started):
+    def _inprocess_http(self, attempt, identity, url_str, body, headers, started, wire=None):
+        wire = self.wire if wire is None else wire
+
         def emit(kind, **fields):
             elapsed = time.monotonic() - started
             if kind == "model_response_bytes_received":
@@ -369,7 +692,7 @@ class ModelRequestProxy:
             forwarded_emitted = False
             awaiting_emitted = False
             try:
-                connection.request("POST", url.path, body=body, headers=req_headers)
+                connection.request("POST", _request_target(url), body=body, headers=req_headers)
                 emit("model_request_forwarded", body_bytes=len(body), body_sha256=hashlib.sha256(body).hexdigest())
                 forwarded_emitted = True
                 phase = "awaiting_response_headers"
@@ -389,7 +712,7 @@ class ModelRequestProxy:
                 attempt.set_connection(connection)
                 connection.connect()
                 phase = "sending_upstream_body"
-                connection.request("POST", url.path, body=body, headers=req_headers)
+                connection.request("POST", _request_target(url), body=body, headers=req_headers)
                 if not forwarded_emitted:
                     emit("model_request_forwarded", body_bytes=len(body), body_sha256=hashlib.sha256(body).hexdigest())
                 phase = "awaiting_response_headers"
@@ -410,7 +733,7 @@ class ModelRequestProxy:
                 pending += chunk
                 while match := re.search(br"\r?\n\r?\n", pending):
                     block, pending = pending[:match.start()], pending[match.end():]
-                    if (t_type := _terminal_sse_type(block)) is not None:
+                    if (t_type := wire.terminal_sse_type(block)) is not None:
                         terminal_seen = True
                         terminal_type = t_type
                         if pending:
@@ -423,9 +746,9 @@ class ModelRequestProxy:
                 raise http.client.IncompleteRead(b"", response.length)
             result = dict(status=response.status, headers=dict(response.getheaders()),
                           body=base64.b64encode(raw).decode(), terminal_seen=terminal_seen)
-            is_sse = raw.lstrip().startswith((b"event:", b"data:", b":"))
+            is_sse = wire.is_event_stream(raw)
             reused_ok = (not attempt.killed and 200 <= response.status < 400
-                         and (terminal_type == "response.completed" if is_sse else not terminal_seen))
+                         and (wire.terminal_allows_reuse(terminal_type) if is_sse else not terminal_seen))
         except Exception as error:
             result = dict(error_type=type(error).__name__, phase=phase, body=base64.b64encode(raw).decode(),
                           status=response.status if response is not None else None,
@@ -451,7 +774,8 @@ class ModelRequestProxy:
                         "model_response_first_byte", "model_response_terminal_received",
                         "model_request_finished", "model_call_completed"}:
                 self._last_activity_at = time.monotonic()
-            if kind == "model_call_started" and fields.get("endpoint") == "/responses/compact":
+            if (kind == "model_call_started" and "upstream" not in fields
+                    and self.wire.route_for_endpoint(fields.get("endpoint")).compaction):
                 # Synchronous with admission; on_event callbacks run asynchronously.
                 self.image_context_epoch = fields.get("logical_call_id") or uuid.uuid4().hex
                 thread_id = fields.get("native_thread_id") or ""
@@ -504,18 +828,74 @@ class ModelRequestProxy:
                 self._shutdown(state["client"])
         self._record("model_call_cancelled", **state["identity"], reason=reason)
 
-    def cancel_pending(self, reason="episode_stopped"):
+    def cancel_pending(self, reason="episode_stopped", *, threads=()):
+        """Cancel every in-flight model call. On non-``codex`` client profiles the native thread of
+        each cancelled call is also tombstoned until ``reopen_thread`` / ``register_thread`` (class
+        docstring), so a client re-send is denied rather than forwarded and charged.
+
+        threads: further native thread ids (str) to tombstone the same way, reopenable, even when none
+        of their calls is in flight; default none. Non-``codex`` profiles only (the Codex relay keeps
+        its behaviour). An agent session passes its own threads when it interrupts, so a model call
+        its client still makes after the native abort is denied too (OpenCode with a running subagent,
+        probe R4-0)."""
+        tombstoned = []
         with self.lock:
             active = list(self.active.values())
+            if self.wire.client != CODEX_PROFILE_NAME:
+                candidates = [state["identity"].get("native_thread_id") for state in active] + list(threads)
+                for thread_id in candidates:
+                    if isinstance(thread_id, str) and thread_id and thread_id not in self.cancelled_threads:
+                        self.cancelled_threads[thread_id] = reason
+                        self._reopenable_threads.add(thread_id)
+                        tombstoned.append(thread_id)
         for state in active:
             self._cancel(state, reason)
+        for thread_id in tombstoned:
+            self._record("model_thread_cancelled", native_thread_id=thread_id, reason=reason, reopenable=True)
+
+    def block_threads(self, threads, reason):
+        """Put the reopenable ``cancel_pending`` tombstone on ``threads`` (native thread ids, str) only: in-flight
+        calls of exactly these threads are cancelled and their later requests are denied until ``reopen_thread`` /
+        ``register_thread``; calls of other threads (e.g. an evidence helper) are untouched. Non-``codex``
+        profiles only (the Codex relay is unchanged). A session uses it to restore the tombstones it lifted for a
+        turn the agent then definitely refused. Returns the list of threads newly tombstoned."""
+        if self.wire.client == CODEX_PROFILE_NAME:
+            return []
+        tombstoned = []
+        with self.lock:
+            for thread_id in threads:
+                if isinstance(thread_id, str) and thread_id and thread_id not in self.cancelled_threads:
+                    self.cancelled_threads[thread_id] = reason
+                    self._reopenable_threads.add(thread_id)
+                    tombstoned.append(thread_id)
+            active = [state for state in self.active.values()
+                      if state["identity"].get("native_thread_id") in tombstoned]
+        for state in active:
+            self._cancel(state, reason)
+        for thread_id in tombstoned:
+            self._record("model_thread_cancelled", native_thread_id=thread_id, reason=reason, reopenable=True)
+        return tombstoned
+
+    def reopen_thread(self, thread_id):
+        """Lift the tombstone ``cancel_pending`` put on ``thread_id`` (non-``codex`` profiles), so the
+        thread's next requests are admitted again. Returns True when a tombstone was lifted; a
+        ``cancel_thread`` tombstone is permanent and stays (False)."""
+        with self.lock:
+            if thread_id not in self._reopenable_threads:
+                return False
+            self._reopenable_threads.discard(thread_id)
+            reason = self.cancelled_threads.pop(thread_id, None)
+        self._record("model_thread_reopened", native_thread_id=thread_id, cancel_reason=reason)
+        return True
 
     def register_thread(self, thread_id, source, request_id):
-        """Attribute an official native thread; only the harness registers owners."""
+        """Attribute an official native thread; only the harness registers owners. Registering a
+        thread lifts a ``cancel_pending`` tombstone on it (``reopen_thread``)."""
         if any(not isinstance(value, str) or not value or len(value) > limit or '\n' in value or '\r' in value
                for value, limit in ((thread_id, 256), (source, 128), (request_id, 128))):
             raise ValueError("model_thread_registration_invalid")
         owner = dict(source=source, caller_request_id=request_id)
+        self.reopen_thread(thread_id)
         with self.lock:
             if thread_id in self.cancelled_threads:
                 raise ValueError("model_thread_already_cancelled")
@@ -538,6 +918,7 @@ class ModelRequestProxy:
             raise ValueError("model_thread_cancellation_invalid")
         with self.lock:
             self.cancelled_threads.setdefault(thread_id, reason)
+            self._reopenable_threads.discard(thread_id)  # an explicit thread cancellation is permanent
             for state in list(self.active.values()):
                 if state["identity"].get("native_thread_id") == thread_id:
                     self._cancel(state, reason)
@@ -636,6 +1017,171 @@ class ModelRequestProxy:
         self._record("model_transport_blocked", **state["identity"], error=error,
                      automatic_retries=self.max_retries, manual_retry_allowed=error["manual_retry_allowed"])
 
+    def _runaway_admission(self, thread_id, body):
+        """Count this generation body in the thread's run of byte-identical consecutive bodies.
+
+        Returns the run length when it exceeds ``RUNAWAY_MAX_IDENTICAL_ADMISSIONS`` within
+        ``RUNAWAY_WINDOW_S`` seconds, else None. A different body starts a new run.
+        """
+        digest = hashlib.sha256(body).digest()
+        now = time.monotonic()
+        with self.lock:
+            previous, times = self._runaway_runs.get(thread_id, (None, ()))
+            times = [t for t in times if now - t <= self.RUNAWAY_WINDOW_S] if previous == digest else []
+            times.append(now)
+            self._runaway_runs[thread_id] = (digest, times)
+            return len(times) if len(times) > self.RUNAWAY_MAX_IDENTICAL_ADMISSIONS else None
+
+    def _block_client_loop(self, state, classification, error_type, **facts):
+        """Block the transport after a client re-request loop (runaway or consume guard). Nothing of
+        this request was forwarded, so an operator may authorise a manual retry after review.
+
+        Sets ``failure_evidence = {classification, **facts}`` and, unless the transport is already
+        blocked, ``blocked_error`` (``error_type``, manual retry allowed); records
+        ``model_<classification>`` (identity + ``facts``) and, for the first block,
+        ``model_transport_blocked``."""
+        evidence = dict(classification=classification, **facts)
+        state["failure_evidence"] = evidence
+        error = dict(logical_call_id=state["identity"]["logical_call_id"], error_type=error_type,
+                     manual_retry_allowed=True, evidence=evidence)
+        with self.lock:
+            first = self.blocked_error is None
+            if first:
+                self.blocked_error = error
+        self._record("model_" + classification, **state["identity"], **facts)
+        if first:
+            self._record("model_transport_blocked", **state["identity"], error=error,
+                         automatic_retries=self.max_retries, manual_retry_allowed=True)
+
+    def _block_runaway(self, state, count):
+        """Block the transport after a tight identical-body retry loop (``_block_client_loop``)."""
+        self._block_client_loop(state, "client_retry_runaway", "ClientRetryRunaway",
+                                identical_admissions=count, window_s=self.RUNAWAY_WINDOW_S)
+
+    def _block_unconsumed(self, state, idle):
+        """Block the transport after ``idle`` delivered completions in a row that the client did not act
+        on (class docstring, "Consume guard"; ``_block_client_loop``)."""
+        self._block_client_loop(state, "client_did_not_consume_completion", "ClientDidNotConsumeCompletion",
+                                idle_completions=idle, max_idle_completions=self.CONSUME_GUARD_MAX_IDLE_COMPLETIONS)
+
+    def _idle_request(self, thread, admission, fingerprints, output_flags):
+        """Consume-guard verdict of one admitted request (class docstring, "Consume guard"); call with
+        ``lock`` held. True: a main request whose history continues the thread's last delivered main
+        request and adds only model output; False: it adds a client item, appends blocks to the last
+        client item, or has any discontinuity reason (``context_signal.REASONS``: a compaction, prune,
+        image removal or system change is new context from the client); None: not compared (not a main
+        request, no delivered main completion on the thread yet, or flags that do not match the
+        fingerprints)."""
+        run = self._idle_runs.get(thread)
+        if run is None or admission.call_purpose != MAIN_CALL or len(output_flags) != len(fingerprints):
+            return None
+        if admission.reason is not None or len(fingerprints) < run.items:
+            return False
+        n = run.items
+        if not all(output_flags[n:]):
+            return False  # a new client item: user, system or developer message, tool result
+        # Blocks appended to the last item (Claude Code merges steer text and tool results into it).
+        return not (n and len(fingerprints[n - 1][1]) > run.last_blocks and not output_flags[n - 1])
+
+    def _commit_idle_run(self, thread, call_purpose, fingerprints, idle):
+        """Replace the thread's ``IdleRun`` with a delivered usable main request (no-op for other
+        purposes); ``idle`` is that request's ``_idle_request`` verdict. Call with ``lock`` held, next to
+        ``continuity.commit``."""
+        if call_purpose != MAIN_CALL:
+            return
+        previous = self._idle_runs.get(thread)
+        count = previous.idle + 1 if idle and previous is not None else 0
+        self._idle_runs[thread] = IdleRun(len(fingerprints), len(fingerprints[-1][1]) if fingerprints else 0, count)
+
+    def _upstream_headers(self, client_headers, *, decoded, binding=None):
+        """Forwarded request headers: hop/private headers and client credentials removed, host
+        credentials of ``binding`` (default: the actor binding) added, ``Accept-Encoding:
+        identity``; ``Content-Encoding`` dropped when the wire decoded the body (``decoded``)."""
+        binding = self.actor_binding if binding is None else binding
+        headers = {k: v for k, v in client_headers.items() if k.lower() not in HOP_HEADERS | PRIVATE_HEADERS}
+        headers = {k: v for k, v in headers.items() if k.lower() != "accept-encoding"}
+        if decoded:
+            headers = {k: v for k, v in headers.items() if k.lower() != "content-encoding"}
+        if binding.auth_headers is not None:
+            headers = {k: v for k, v in headers.items() if k.lower() not in binding.client_auth_headers}
+            headers.update(binding.auth_headers)
+        elif binding.name != ACTOR_UPSTREAM:
+            # A helper binding never forwards a client credential (it may be another binding's).
+            headers = {k: v for k, v in headers.items() if k.lower() not in binding.client_auth_headers}
+        headers["Accept-Encoding"] = "identity"
+        return headers
+
+    def _forward_auxiliary(self, route, body, headers, upstream_url=None):
+        """One upstream POST for an auxiliary route: fresh connection, no retry, socket deadline
+        ``AUX_REQUEST_TIMEOUT_S``; registered so ``close()`` can interrupt it.
+
+        Returns ``(status, reason, response_headers, body_bytes)``; transport errors propagate.
+        """
+        url = urlsplit((self.upstream_url if upstream_url is None else upstream_url) + route.upstream_path)
+        connection_type = http.client.HTTPSConnection if url.scheme == "https" else http.client.HTTPConnection
+        connection = connection_type(url.hostname, url.port, timeout=AUX_REQUEST_TIMEOUT_S)
+        with self.lock:
+            if self.closed:
+                raise ConnectionError("model proxy closed")
+            self._aux_connections.add(connection)
+        try:
+            connection.request("POST", _request_target(url), body=body, headers=headers)
+            response = connection.getresponse()
+            data = response.read()
+            return response.status, response.reason, response.getheaders(), data
+        finally:
+            with self.lock:
+                self._aux_connections.discard(connection)
+            connection.close()
+
+    def _context_discontinuity(self, state, reason):
+        """Apply the synchronous effects of a detected context discontinuity (class docstring,
+        "Continuity tracking"), then call ``on_context_discontinuity(reason)`` outside ``lock``."""
+        identity = state["identity"]
+        with self.lock:
+            # The same state change a /responses/compact admission makes (see _record).
+            self.image_context_epoch = identity["logical_call_id"]
+            thread_id = identity.get("native_thread_id") or ""
+            self._image_trim_watermarks.pop(thread_id, None)
+            self._image_trim_starts.pop(thread_id, None)
+            self._record("model_context_discontinuity", **identity, reason=reason)
+        callback = self.on_context_discontinuity
+        if callback is None:
+            return
+        try:
+            callback(reason)
+        except Exception as error:  # A session callback failure must not fail the model call.
+            self._record("model_context_discontinuity_callback_failed", **identity, reason=reason,
+                         error_type=type(error).__name__)
+
+    def _continuity_main_thread(self, thread):
+        """True when the tracker tracks ``thread``'s main chain (class docstring, "Continuity tracking"):
+        ``default_thread_id`` and the threads registered with source ``"actor"``, or every thread when the
+        relay has neither. Call with ``lock`` held."""
+        actors = [key for key, owner in self.thread_owners.items() if owner.get("source") == "actor"]
+        if self.default_thread_id is None and not actors:
+            return True
+        return thread == self.default_thread_id or thread in actors
+
+    def _observe_continuity(self, state, thread, inputs, output_flags=None):
+        """Admit one generation request's tracker ``inputs`` on the tracker ``thread`` (under ``lock``):
+        set ``identity.call_purpose``, take the consume-guard verdict when ``output_flags``
+        (``wire.history_model_output_flags`` of the same body) is given, apply a discontinuity of a main
+        request (never one the consume guard refuses: a refused request is idle, and an idle request has
+        no discontinuity), and return a ``ContinuityAdmission`` for the commit. Never moves a baseline."""
+        refused = idle = None
+        with self.lock:
+            admission = self.continuity.admit(thread, main_thread=self._continuity_main_thread(thread), **inputs)
+            state["identity"]["call_purpose"] = admission.call_purpose
+            if output_flags is not None:
+                idle = self._idle_request(thread, admission, inputs["fingerprints"], output_flags)
+                run = self._idle_runs.get(thread)
+                if idle and run.idle >= self.CONSUME_GUARD_MAX_IDLE_COMPLETIONS:
+                    refused = run.idle
+        if admission.reason is not None:
+            self._context_discontinuity(state, admission.reason)
+        return ContinuityAdmission(admission.call_purpose, idle, refused)
+
     def manual_retry(self):
         """Explicit operator action only; unknown transport outcomes stay blocked."""
         with self.lock:
@@ -645,6 +1191,9 @@ class ModelRequestProxy:
                 raise ValueError("manual_retry_requires_explicit_provider_error")
             previous = self.blocked_error
             self.blocked_error = None
+            # The operator reviewed the loop: identical bodies and idle completions start a fresh count.
+            self._runaway_runs.clear()
+            self._idle_runs.clear()
         self._record("model_manual_retry_authorized", previous_error=previous)
 
     def _watch_client(self, state):
@@ -660,88 +1209,19 @@ class ModelRequestProxy:
 
     @staticmethod
     def _failed_response_error(response):
-        """Codex Responses error mapping; never persist the provider message.
-
-        Based on native Responses error categories. Harness policy also retries
-        explicit temporary overloads; auth/configuration failures stay terminal.
-        """
-        error = response.get("error")
-        detail = error if isinstance(error, dict) else {}
-        valid = isinstance(error, dict) and all(detail.get(k) is None or isinstance(detail[k], str)
-                    for k in ("type", "code", "message", "plan_type"))
-        reset = detail.get("resets_at")
-        valid = valid and (reset is None or type(reset) is int and -(2**63) <= reset < 2**63)
-        code = detail.get("code")
-        fatal = {"context_length_exceeded": "context_window_exceeded",
-                 "insufficient_quota": "quota_exceeded", "credit_balance_exhausted": "quota_exceeded",
-                 "organization_spend_limit_exceeded": "quota_exceeded", "project_spend_limit_exceeded": "quota_exceeded",
-                 "usage_not_included": "usage_not_included", "cyber_policy": "cyber_policy",
-                 "bio_policy": "bio_policy", "misalignment_policy_violation": "misalignment_policy_violation",
-                 "invalid_api_key": "authentication_error", "authentication_error": "authentication_error",
-                 "permission_denied": "permission_denied", "model_not_found": "configuration_error",
-                 "invalid_request_error": "configuration_error", "unsupported_parameter": "configuration_error",
-                 "invalid_prompt": "invalid_prompt", "image_compression_failed": "retryable",
-                 "server_is_overloaded": "server_overloaded",
-                 "server_overloaded": "server_overloaded", "overloaded": "server_overloaded",
-                 "content_filter": "refusal", "content_policy": "refusal", "refusal": "refusal",
-                 "flex_unavailable": "flex_unavailable"}
-        category = ("flex_unavailable" if code == "flex_unavailable" else "stream" if not valid else
-                    fatal.get(code, fatal.get(detail.get("type"),
-                        "rate_limit" if code in ("rate_limit_exceeded", "slow_down") else "retryable")))
-        delay = None
-        if category == "rate_limit":
-            match = re.search(r"(?i)try again in\s*(\d+(?:\.\d+)?)\s*(s|ms|seconds?)", detail.get("message") or "")
-            if match:
-                delay = float(match[1]) / (1000 if match[2].lower() == "ms" else 1)
-                if not math.isfinite(delay) or delay <= 0:
-                    delay = None
-        def safe(value):
-            return value if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_.:-]{1,120}", value) else None
-        return dict(code=safe(code), type=safe(detail.get("type")),
-                    code_state="unknown" if code is None else "present" if safe(code) is not None else "redacted_or_invalid",
-                    classification=category, retryable=category in ("retryable", "stream", "rate_limit", "server_overloaded"),
-                    retry_after_s=delay)
+        """Compatibility delegate: ``OpenAIResponsesWire.failed_response_error`` (sanitised
+        Responses error mapping; never persists the provider message)."""
+        return _RESPONSES.failed_response_error(response)
 
     @staticmethod
     def _response_evidence(raw, endpoint):
-        """Return authoritative response/usage; never construct output from deltas."""
-        terminal = None
-        if raw.lstrip().startswith((b"event:", b"data:", b":")):
-            for block in raw.decode().replace("\r\n", "\n").split("\n\n"):
-                data = "\n".join(line[5:].lstrip(" ") for line in block.splitlines() if line.startswith("data:"))
-                if not data or data == "[DONE]":
-                    continue
-                event = json.loads(data)
-                if event.get("type") == "error":
-                    error = event.get("error", event)
-                    response = dict(status="failed", output=[], error=error)
-                    return True, dict(response_id=None, served_model=None, response_status="failed",
-                                      usage=None, usage_known=False,
-                                      response_error=ModelRequestProxy._failed_response_error(response)), response
-                if event.get("type") in ("response.completed", "response.failed", "response.incomplete"):
-                    terminal = event
-                    break
-            if terminal is None:
-                raise EOFError("response terminal missing")
-            response = terminal.get("response")
-            complete = True  # A terminal is transport evidence, not necessarily a usable completion.
-        else:
-            response = json.loads(raw)
-            complete = endpoint == "/responses/compact" or response.get("status") in ("completed", "incomplete", "failed")
-        if not isinstance(response, dict) or (response.get("status") != "failed" and not isinstance(response.get("output"), list)):
-            raise ValueError("invalid response structure")
-        if terminal is not None and terminal["type"] != "response." + str(response.get("status")):
-            raise ValueError("response event and status conflict")
-        if endpoint != "/responses/compact":
-            complete = complete and response.get("status") in ("completed", "incomplete", "failed")
-        evidence = dict(response_id=response.get("id"), served_model=response.get("model"),
-                        response_status=response.get("status"),
-                        usage=response.get("usage"), usage_known=isinstance(response.get("usage"), dict) and bool(response["usage"]))
-        if response.get("status") == "failed":
-            evidence["response_error"] = ModelRequestProxy._failed_response_error(response)
-        return complete, evidence, response
+        """Compatibility delegate: ``OpenAIResponsesWire.response_evidence`` for ``endpoint``."""
+        return _RESPONSES.response_evidence(raw, _RESPONSES.route_for_endpoint(endpoint))
 
     def _attempt(self, state, body, headers, endpoint, retry_index):
+        binding = state.get("binding") or self.actor_binding
+        wire = binding.wire
+        route = state.get("route") or wire.route_for_endpoint(endpoint)
         for key in ("failed_response", "provider_explicit_error", "failure_evidence", "connect_failure",
                     "stream_incomplete"):
             state.pop(key, None)
@@ -751,7 +1231,10 @@ class ModelRequestProxy:
             self.attempt_count += 1
             number = self.attempt_count
         identity = dict(**state["identity"], request_index=number, attempt_index=retry_index + 1)
-        payload = dict(url=self.upstream_url + endpoint, body=base64.b64encode(body).decode(), headers=headers)
+        payload = dict(url=binding.upstream_url + endpoint, body=base64.b64encode(body).decode(), headers=headers,
+                       wire=wire.name)
+        if wire.client != CODEX_PROFILE_NAME:
+            payload["client"] = wire.client
         serialized = json.dumps(payload)
         started = time.monotonic()
         process = None
@@ -766,7 +1249,8 @@ class ModelRequestProxy:
                 self._record("model_request_started", **identity, timeout_s=None, max_retries=self.max_retries,
                              deadline_boundary=None, phase="worker_initialization")
                 started = time.monotonic()
-                result, phase = self._inprocess_http(process, identity, self.upstream_url + endpoint, body, headers, started)
+                result, phase = self._inprocess_http(process, identity, binding.upstream_url + endpoint, body, headers,
+                                                     started, wire=wire)
             else:
                 process = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--http-worker"],
                                            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
@@ -807,30 +1291,22 @@ class ModelRequestProxy:
                 raise self.policy.InfrastructureFailure("planner HTTP worker failed", retryable=False)
             response = result["result"]
             try:
-                _, state["attempt_evidence"], _ = self._response_evidence(base64.b64decode(response.get("body", "")), endpoint)
+                _, state["attempt_evidence"], _ = wire.response_evidence(base64.b64decode(response.get("body", "")), route)
             except (ValueError, EOFError, TypeError, AttributeError):
                 pass
             raw = base64.b64decode(response["body"])
             status = response.get("status")
             if status is not None and status >= 400:
                 state["provider_explicit_error"] = True
-                error = Exception("provider HTTP failure")
-                error.status_code = status
                 try:
-                    error.body = json.loads(raw)
+                    error_body = json.loads(raw)
                 except ValueError:
-                    error.body = None
-                detail = error.body if isinstance(error.body, dict) else {}
+                    error_body = None
+                detail = error_body if isinstance(error_body, dict) else {}
                 state["attempt_evidence"] = dict(usage=None, usage_known=False,
-                    response_error=self._failed_response_error(detail), http_error_status=status)
+                    response_error=wire.failed_response_error(detail), http_error_status=status)
                 state["failure_evidence"] = dict(http_status=status, **state["attempt_evidence"]["response_error"])
-                # The pinned classifier only reads these attributes, never raw headers/body into logs.
-                from types import SimpleNamespace
-                error.response = SimpleNamespace(headers={k.lower(): v for k, v in response["headers"].items()})
-                failure = self.policy.classify_openai_error(error)
-                if state["attempt_evidence"]["response_error"].get("code") == "image_compression_failed":
-                    failure.retryable = True
-                raise failure
+                raise wire.classify_http_failure(status, response["headers"], error_body, policy=self.policy)
             if response.get("error_type"):
                 phase = response.get("phase", phase)
                 # A failure while connecting (DNS resolution, refused or timed-out connect) happens before
@@ -850,26 +1326,29 @@ class ModelRequestProxy:
                 state["stream_incomplete"] = True
                 return self.policy.InfrastructureFailure(message, retryable=True)
             try:
-                complete, evidence, terminal = self._response_evidence(raw, endpoint)
+                complete, evidence, terminal = wire.response_evidence(raw, route)
             except EOFError:
                 raise stream_incomplete("model response terminal missing", "terminal_missing") from None
             except (ValueError, TypeError, AttributeError):
                 raise stream_incomplete("model response malformed", "malformed") from None
             state["attempt_evidence"] = evidence
-            if evidence["response_status"] in ("failed", "incomplete"):
-                # Neither failed nor incomplete responses may release tool deltas.
-                terminal = {**terminal, "output": []}
-                event_type = "response." + evidence["response_status"]
-                failed_raw = (("event: " + event_type + "\ndata: " + json.dumps(dict(type=event_type, response=terminal)) + "\n\n").encode()
-                              if raw.lstrip().startswith((b"event:", b"data:", b":")) else json.dumps(terminal).encode())
-                state["failed_response"] = (failed_raw, response["headers"])
+            outcome = wire.completion_outcome(complete, evidence)
+            if outcome in ("failed", "incomplete"):
+                # Neither failed nor incomplete responses may release tool deltas. A deferred-delivery
+                # client never gets an in-band failure (it would retry it); it gets relay_error instead.
+                failed_raw = (wire.failed_payload(terminal, streaming=wire.is_event_stream(raw))
+                              if wire.early_stream else None)
+                if failed_raw is not None:
+                    state["failed_response"] = (failed_raw, response["headers"])
                 error = evidence.get("response_error", dict(classification="incomplete"))
                 state["failure_evidence"] = dict(http_status=status, **error)
-                state["provider_explicit_error"] = evidence["response_status"] == "failed"
+                state["provider_explicit_error"] = outcome == "failed"
                 raise self.policy.InfrastructureFailure("model response failed: " + error["classification"],
                     retryable=bool(error.get("retryable")), retry_after_s=error.get("retry_after_s"))
-            if not complete:
+            if outcome != "usable":
                 raise stream_incomplete("model response ended without completed status", "not_completed")
+            if self.continuity is not None:
+                state["context_edit_applied"] = wire.context_edit_applied(terminal)
             return raw, response["headers"]
         finally:
             _kill(process)
@@ -886,133 +1365,47 @@ class ModelRequestProxy:
                          timed_out=False, phase=phase,
                          **state.pop("attempt_evidence", dict(usage=None, usage_known=False)))
 
+    # Compatibility delegates (Responses request shape); the relay itself uses ``self.wire``.
     @staticmethod
     def _part_observation_labels(parts):
-        labels, queue, observation = [], [], None
-        for part in parts:
-            if not isinstance(part, dict):
-                labels.append((None, None))
-                continue
-            ptype = part.get("type")
-            if ptype in ("input_text", "inputText", "output_text", "text"):
-                value = None
-                try:
-                    value = json.loads(part.get("text", ""))
-                except (TypeError, ValueError):
-                    pass
-                bundle = value.get("bundle") if isinstance(value, dict) else None
-                if isinstance(bundle, dict) and isinstance(bundle.get("observation_id"), str):
-                    observation = bundle["observation_id"]
-                    view = value.get("image_view")
-                    feedback = value.get("image_feedback")
-                    if isinstance(view, dict) and view.get("camera_id"):
-                        queue = [view["camera_id"]]
-                    elif isinstance(feedback, dict) and isinstance(feedback.get("included_camera_ids"), list):
-                        queue = list(feedback["included_camera_ids"])
-                    else:
-                        queue = [cam.get("camera_id") for cam in bundle.get("cameras", []) if isinstance(cam, dict)]
-                elif isinstance(value, dict):
-                    observation = (value.get("observation_id")
-                                   or (value.get("receipt") or {}).get("result_observation_id")
-                                   or (value.get("observation_ids") or [None])[0])
-                    overlay = value.get("trajectory_overlay") or value.get("value")
-                    cam = overlay.get("camera_id") if isinstance(overlay, dict) else None
-                    queue = [cam] if cam else []
-                else:
-                    queue, observation = [], None
-                labels.append((None, None))
-            elif ptype == "input_image" and str(part.get("image_url", "")).startswith("data:image/"):
-                camera = queue.pop(0) if queue else None
-                labels.append((observation, camera))
-            else:
-                labels.append((None, None))
-        return labels
+        """Delegate: ``OpenAIResponsesWire.part_observation_labels``."""
+        return OpenAIResponsesWire.part_observation_labels(parts)
 
     @classmethod
     def _inline_image_locations(cls, request, *, include_labels=False):
-        items = request.get("input") if isinstance(request, dict) else None
-        if not isinstance(items, list):
-            return []
-        locations = []
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            key = "content" if item.get("type", "message") == "message" else (
-                "output" if item.get("type") in ("function_call_output", "custom_tool_call_output") else None)
-            parts = item.get(key) if key else None
-            if not isinstance(parts, list):
-                continue
-            labels = cls._part_observation_labels(parts) if include_labels else None
-            for idx, part in enumerate(parts):
-                if isinstance(part, dict) and part.get("type") == "input_image" and str(part.get("image_url", "")).startswith("data:image/"):
-                    locations.append((parts, idx, labels[idx]) if include_labels else (parts, idx))
-        return locations
+        """Delegate: ``OpenAIResponsesWire.image_locations``."""
+        return _RESPONSES.image_locations(request, include_labels=include_labels)
 
     @classmethod
     def _step_image_boundaries(cls, request):
-        items = request.get("input") if isinstance(request, dict) else None
-        if not isinstance(items, list):
-            return [], []
-        locations, boundaries = [], []
-        output_types = ("function_call_output", "custom_tool_call_output")
-        for i, item in enumerate(items):
-            if not isinstance(item, dict):
-                continue
-            itype = item.get("type", "message")
-            key = "content" if itype == "message" else ("output" if itype in output_types else None)
-            parts = item.get(key) if key else None
-            if isinstance(parts, list):
-                for idx, part in enumerate(parts):
-                    if isinstance(part, dict) and part.get("type") == "input_image" and str(part.get("image_url", "")).startswith("data:image/"):
-                        locations.append((parts, idx))
-            next_type = items[i + 1].get("type") if i + 1 < len(items) and isinstance(items[i + 1], dict) else None
-            if (itype not in output_types or next_type not in output_types) and locations and (not boundaries or boundaries[-1] != len(locations)):
-                boundaries.append(len(locations))
-        return locations, boundaries
+        """Delegate: ``OpenAIResponsesWire.step_image_boundaries``."""
+        return _RESPONSES.step_image_boundaries(request)
 
     @classmethod
     def _trim_image_range(cls, request, start_idx, end_idx):
-        if end_idx <= start_idx or end_idx <= 0:
-            return request, 0
-        from copy import deepcopy
-        cloned = deepcopy(request)
-        locations = cls._inline_image_locations(cloned, include_labels=True)
-        start = max(0, min(start_idx, len(locations)))
-        end = max(start, min(end_idx, len(locations)))
-        for parts, idx, (obs_id, cam) in locations[start:end]:
-            if obs_id and cam:
-                text = (f"[Earlier historical observation image omitted (observation_id={obs_id}, camera={cam}) "
-                        f"to stay within upstream gateway payload limit; call history_view_observation(observation_id='{obs_id}') "
-                        "if you need to inspect this frame.]")
-            elif obs_id:
-                text = (f"[Earlier historical observation image omitted (observation_id={obs_id}) "
-                        f"to stay within upstream gateway payload limit; call history_view_observation(observation_id='{obs_id}') "
-                        "if you need to inspect this frame.]")
-            else:
-                text = "[Earlier historical observation image omitted to stay within upstream gateway payload limit.]"
-            parts[idx] = dict(type="input_text", text=text)
-        return cloned, end - start
+        """Delegate: ``WireAdapter.trim_image_range`` on the Responses wire."""
+        return _RESPONSES.trim_image_range(request, start_idx, end_idx)
 
     @classmethod
     def _trim_prefix_images(cls, request, prefix_count):
-        return cls._trim_image_range(request, 0, prefix_count)
+        """Delegate: ``WireAdapter.trim_prefix_images`` on the Responses wire."""
+        return _RESPONSES.trim_prefix_images(request, prefix_count)
 
     @classmethod
     def _trim_oldest_images(cls, body, keep_latest=24):
-        try:
-            request = json.loads(body)
-        except ValueError:
-            return body
-        total = len(cls._inline_image_locations(request))
-        if total <= keep_latest:
-            return body
-        trimmed, _ = cls._trim_prefix_images(request, total - keep_latest)
-        return json.dumps(trimmed, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode()
+        """Delegate: ``WireAdapter.trim_oldest_images`` on the Responses wire."""
+        return _RESPONSES.trim_oldest_images(body, keep_latest)
 
     def _prepare_responses_body(self, state, base_request, base_body, *, force_advance=False, retry_index=0):
+        """Image-trim window state machine for one generation body (any wire; historic name).
+
+        Returns ``(request, body_bytes)`` to forward. Image locations, step boundaries,
+        placeholders, reuse and the byte limits come from ``self.wire``.
+        """
+        wire = self.wire
         identity = state["identity"]
         thread_key = identity.get("native_thread_id") or ""
-        locations, step_boundaries = self._step_image_boundaries(base_request)
+        locations, step_boundaries = wire.step_image_boundaries(base_request)
         total_images = len(locations)
         with self.lock:
             watermark, last_total = self._image_trim_watermarks.get(thread_key, (0, 0))
@@ -1027,11 +1420,10 @@ class ModelRequestProxy:
         def render(s_idx, wm):
             working = base_request
             if wm > s_idx:
-                working, _ = self._trim_image_range(working, s_idx, wm)
+                working, _ = wire.trim_image_range(working, s_idx, wm)
             image_stats = None
             if self.image_reuse:
-                from ...core.presentation.image_reuse import reuse_exact_images
-                rewritten, image_stats = reuse_exact_images(working)
+                rewritten, image_stats = wire.reuse_exact_images(working)
                 if image_stats["replaced"]:
                     working = rewritten
             if wm <= s_idx and not (image_stats and image_stats["replaced"]):
@@ -1043,13 +1435,13 @@ class ModelRequestProxy:
         working, encoded, image_stats = render(start_idx, watermark)
         limit = self.max_inline_images
         def image_count(request):
-            return len(self._inline_image_locations(request))
+            return len(wire.image_locations(request))
         # The provider rejects requests by inline image count, independent of bytes.
-        bytes_over = len(encoded) > 4_500_000
+        bytes_over = len(encoded) > wire.body_limit_bytes
         count_over = bool(limit) and image_count(working) > limit
         reason = "body_bytes_and_image_count" if bytes_over and count_over else "image_count" if count_over else "body_bytes"
         if self.image_trim and (bytes_over or count_over) and total_images > 8:
-            target_bytes = 2_400_000
+            target_bytes = wire.trim_target_bytes
             target_images = limit * 2 // 3
             tail_candidates = [b for b in step_boundaries if b <= total_images - 12]
             new_wm = max(watermark, tail_candidates[-1] if tail_candidates else max(0, total_images - 12))
@@ -1059,7 +1451,7 @@ class ModelRequestProxy:
                 saved, removed, raw_start = 0, 0, new_wm
                 for idx in range(new_wm - 1, -1, -1):
                     parts, part_idx = locations[idx]
-                    saved += len(parts[part_idx].get("image_url", ""))
+                    saved += wire.image_part_size(parts[part_idx])
                     removed += 1
                     raw_start = idx
                     if saved >= need_bytes and removed >= need_images:
@@ -1095,9 +1487,14 @@ class ModelRequestProxy:
         return working, encoded
 
     def _complete(self, state, body, headers, endpoint):
-        if (self.image_trim and endpoint.rstrip("/").endswith("/responses") and "base_request" not in state
-                and len(body) > 4_500_000):
-            body = self._trim_oldest_images(body, 16)
+        binding = state.get("binding") or self.actor_binding
+        wire = binding.wire
+        # Image trim and reuse belong to the actor binding only (design §4.1 bindings rules).
+        image_trim = self.image_trim and binding.name == ACTOR_UPSTREAM
+        route = state.get("route") or wire.route_for_endpoint(endpoint)
+        if (image_trim and route.kind == "generation" and not route.compaction and "base_request" not in state
+                and len(body) > wire.body_limit_bytes):
+            body = wire.trim_oldest_images(body, 16)
         retry_index = rounds = 0
         while True:
             try:
@@ -1111,12 +1508,12 @@ class ModelRequestProxy:
             except self.policy.InfrastructureFailure as failure:
                 if state["cancel"].is_set():
                     raise
-                image_rejected = (state.get("failure_evidence") or {}).get("code") == "image_compression_failed"
+                image_rejected = wire.image_rejected(state.get("failure_evidence") or {})
                 # Without trimming, a retry would resend the body the provider just rejected.
                 explicit_retryable = bool((state.get("provider_explicit_error") or state.get("connect_failure")
                                            or state.get("stream_incomplete"))
                                           and failure.retryable
-                                          and not (image_rejected and not self.image_trim))
+                                          and not (image_rejected and not image_trim))
                 recovering = not (explicit_retryable and retry_index < self.max_retries)
                 delay = self._recovery_delay(state, rounds, explicit_retryable) if recovering else None
                 if recovering and delay is None:
@@ -1128,7 +1525,7 @@ class ModelRequestProxy:
                             force_advance=True, retry_index=retry_index,
                         )
                     else:
-                        body = self._trim_oldest_images(body, max(8, 16 - retry_index * 4))
+                        body = wire.trim_oldest_images(body, max(8, 16 - retry_index * 4))
                 if recovering:
                     rounds += 1
                     self._record("model_transport_recovery_scheduled", **state["identity"], recovery_round=rounds,
@@ -1162,73 +1559,253 @@ class ModelRequestProxy:
         self.callback_thread.start()
         owner = self
 
+        wire = self.wire
+
         class Handler(BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
             def log_message(self, *_): pass
 
-            def do_POST(self):
-                if self.path not in ("/responses", "/responses/compact"):
-                    self.send_error(404)
+            def send_reply(self, reply):
+                """Send a relay-generated ``WireReply`` as a complete HTTP answer."""
+                if reply.body is None:
+                    self.send_error(reply.status, reply.reason)
                     return
+                self.send_response(reply.status, reply.reason)
+                for key, value in reply.headers.items():
+                    self.send_header(key, value)
+                self.send_header("Content-Length", str(len(reply.body)))
+                self.send_header("Connection", "close")
+                self.end_headers()
+                self.wfile.write(reply.body)
+                self.wfile.flush()
+
+            def content_length(self):
+                """Declared body length within the relay bound, or None after answering 400."""
                 try:
                     length = int(self.headers.get("Content-Length", "-1"))
                 except ValueError:
                     self.send_error(400)
-                    return
-                if not 0 <= length <= 128 * 1024 * 1024 or self.headers.get("Transfer-Encoding"):
+                    return None
+                if not 0 <= length <= MAX_CLIENT_BODY_BYTES or self.headers.get("Transfer-Encoding"):
                     self.send_error(400, "Content-Length required within model input bound")
+                    return None
+                return length
+
+            def drain_body(self, length):
+                """Read and discard a refused request's declared body (bounded by ``length`` and
+                ``REFUSAL_DRAIN_TIMEOUT_S``) so the client finishes writing and reads the refusal."""
+                remaining = length
+                try:
+                    self.connection.settimeout(REFUSAL_DRAIN_TIMEOUT_S)
+                    while remaining > 0 and (chunk := self.rfile.read(min(remaining, 1 << 16))):
+                        remaining -= len(chunk)
+                    self.connection.settimeout(None)
+                except OSError:
+                    pass
+
+            def refuse(self, reply, length):
+                """Drain the declared body, then send the relay-generated ``reply``."""
+                if length:
+                    self.drain_body(length)
+                self.send_reply(reply)
+
+            def declared_length(self):
+                """Declared body length when valid and within the bound, else 0 (nothing to drain)."""
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                except ValueError:
+                    return 0
+                return length if 0 < length <= MAX_CLIENT_BODY_BYTES and not self.headers.get("Transfer-Encoding") else 0
+
+            def wire_thread(self, wire=wire):
+                """The native thread key the client sent: the private ``X-Auriga-Thread`` header of a
+                host-side client, else the wire's own thread key; ``""`` when absent or invalid."""
+                key = self.headers.get("X-Auriga-Thread") or wire.thread_key(self.headers)
+                return key if isinstance(key, str) and len(key) <= 256 else ""
+
+            def attribution(self, wire=wire):
+                """``(native_thread_id, owner_attribution_or_None)``; call with ``owner.lock`` held.
+
+                The key is ``wire_thread``; an empty or unregistered key falls back to ``default_thread_id``.
+                """
+                native_thread_id = self.wire_thread(wire)
+                if (owner.default_thread_id is not None and native_thread_id not in owner.thread_owners
+                        and native_thread_id not in owner.cancelled_threads):
+                    native_thread_id = owner.default_thread_id
+                return native_thread_id, owner.thread_owners.get(native_thread_id)
+
+            def do_POST(self):
+                binding, path = owner._binding_for_path(self.path)
+                if binding is None:
+                    self.refuse(wire.not_found(), self.declared_length())
+                    return
+                route = binding.wire.route(self.command, path)
+                if route is not None and route.kind == "generation":
+                    self.generation(route, binding)
+                elif route is not None and route.kind == "auxiliary":
+                    self.auxiliary(route, binding)
+                else:
+                    self.refuse(binding.wire.not_found(), self.declared_length())
+
+            def binding_projection(self, binding):
+                """Egress projection of a request on ``binding``: the ``request_projection`` hook for the
+                actor binding (None when unset), the binding wire's walker for a named binding."""
+                if binding.name == ACTOR_UPSTREAM:
+                    return owner.request_projection
+                return lambda request: binding.wire.project_request(
+                    request, binding.presentation, registered_tools=frozenset(), tool_name_prefix="")
+
+            def auxiliary(self, route, binding):
+                """Projected, forwarded once, never charged or retried; one ``model_aux_request``."""
+                wire = binding.wire
+                projection = self.binding_projection(binding)
+                length = self.content_length()
+                if length is None:
                     return
                 with owner.lock:
-                    native_thread_id = self.headers.get("thread-id", "")
+                    native_thread_id, attribution = self.attribution(wire)
+                    attribution = attribution or dict(
+                        source=self.headers.get("X-Auriga-Source", "actor")[:128],
+                        caller_request_id=self.headers.get("X-Auriga-Request-Id", "")[:128])
+                    owner.aux_request_count += 1
+                    record = dict(aux_request_index=owner.aux_request_count, endpoint=route.endpoint,
+                                  native_thread_id=native_thread_id, **attribution)
+                    if binding.name != ACTOR_UPSTREAM:
+                        record["upstream"] = binding.name
+                    denial = ("thread_cancelled" if native_thread_id in owner.cancelled_threads else
+                              "transport_blocked" if owner.blocked_error is not None or owner.closed else None)
+                started, phase = time.monotonic(), "reading_client_body"
+                try:
+                    if denial is not None:
+                        record["denied"] = denial
+                        self.refuse(wire.denial(denial), length)
+                        return
+                    if projection is None:
+                        # An auxiliary body carries raw history; without the egress projection it
+                        # never leaves the host.
+                        record["denied"] = "projection_unavailable"
+                        self.refuse(wire.relay_error(streaming=False, evidence=None, manual_retry_allowed=False), length)
+                        return
+                    self.connection.settimeout(None)
+                    received = self.rfile.read(length)
+                    if len(received) != length:
+                        raise ConnectionError("incomplete client request")
+                    record["body_bytes"] = len(received)
+                    phase = "projecting"
+                    body = wire.decode_body(self.headers, received)
+                    decoded = body is not received
+                    request = json.loads(body)
+                    request = projection(request)
+                    body = json.dumps(request, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode()
+                    record["requested_model"] = wire.requested_model(request) if isinstance(request, dict) else None
+                    headers = owner._upstream_headers(self.headers, decoded=decoded, binding=binding)
+                    phase = "forwarding"
+                    record.update(forwarded_body_bytes=len(body), forwarded_body_sha256=hashlib.sha256(body).hexdigest())
+                    status, reason, response_headers, data = owner._forward_auxiliary(route, body, headers,
+                                                                                      binding.upstream_url)
+                    record.update(http_status=status, response_bytes=len(data))
+                    phase = "delivering"
+                    if status >= 400:
+                        try:
+                            detail = json.loads(data)
+                        except ValueError:
+                            detail = None
+                        record["response_error"] = wire.failed_response_error(detail if isinstance(detail, dict) else {})
+                        # Provider error text never reaches the client: the wire's sanitised error instead.
+                        self.send_reply(wire.relay_error(streaming=False, evidence=None, manual_retry_allowed=False))
+                        record["delivered"] = True
+                        return
+                    self.send_response(status, reason)
+                    for key, value in response_headers:
+                        if key.lower() not in HOP_HEADERS:
+                            self.send_header(key, value)
+                    self.send_header("Content-Length", str(len(data)))
+                    self.send_header("Connection", "close")
+                    self.end_headers()
+                    self.wfile.write(data)
+                    self.wfile.flush()
+                    record["delivered"] = True
+                except (Exception, owner.policy.InfrastructureFailure) as error:
+                    record.update(error_type=type(error).__name__, phase=phase)
+                    if phase != "delivering":
+                        try:
+                            self.send_reply(wire.relay_error(streaming=False, evidence=None, manual_retry_allowed=False))
+                        except OSError:
+                            pass
+                finally:
+                    self.close_connection = True
+                    owner._record("model_aux_request", **record, elapsed_s=time.monotonic()-started)
+
+            def generation(self, route, binding):
+                wire = binding.wire
+                actor = binding.name == ACTOR_UPSTREAM
+                length = self.content_length()
+                if length is None:
+                    return
+                refusal, denied, exhausted, notify_limit = None, False, False, False
+                with owner.lock:  # one atomic admission decision; any refusal is sent after the lock
+                    native_thread_id, registered = self.attribution(wire)
+                    # The continuity tracker's thread: the client's own key, never remapped when unregistered.
+                    chain_thread = self.wire_thread(wire) or owner.default_thread_id or ""
                     if native_thread_id in owner.cancelled_threads:
                         owner._record("model_thread_request_rejected", native_thread_id=native_thread_id,
                                       reason=owner.cancelled_threads[native_thread_id])
-                        self.send_error(409, "model thread explicitly cancelled")
-                        return
-                    if owner.blocked_error is not None:
+                        refusal = "thread_cancelled"
+                    elif owner.blocked_error is not None:
                         # Blocks SDK reconnect, automatic compaction recovery and
                         # any new logical request until an operator authorizes it.
-                        self.send_error(409, "model transport blocked; manual review required")
-                        return
-                    exhausted = owner.request_count >= owner.max_requests
-                    denied = owner.closed or owner.request_count + owner.reserved_calls >= owner.max_requests
-                    if not denied:
-                        owner.reserved_calls += 1
-                        owner.logical_call_count += 1
-                        number = owner.logical_call_count
-                        attribution = owner.thread_owners.get(native_thread_id, dict(
-                            source=self.headers.get("X-Auriga-Source", "actor")[:128],
-                            caller_request_id=self.headers.get("X-Auriga-Request-Id", "")[:128]))
-                        identity = dict(logical_call_index=number, logical_call_id=f"{owner.transport_id}:{number}",
-                                        endpoint=self.path, native_thread_id=native_thread_id, **attribution)
-                        state = dict(identity=identity, client=self.connection, process=None,
-                                     cancel=threading.Event(), finished=threading.Event(), cancel_reason=None,
-                                     reading_client_body=True)
-                        if not owner.active:
-                            owner._wait_started_at = time.monotonic()
-                        owner.active[number] = state
-                    notify_limit = exhausted and not owner.limit_notified
-                    if notify_limit:
-                        owner.limit_notified = True
+                        refusal = "transport_blocked"
+                    else:
+                        exhausted = owner.request_count >= owner.max_requests
+                        denied = owner.closed or owner.request_count + owner.reserved_calls >= owner.max_requests
+                        if not denied:
+                            owner.reserved_calls += 1
+                            owner.logical_call_count += 1
+                            number = owner.logical_call_count
+                            attribution = registered or dict(
+                                source=self.headers.get("X-Auriga-Source", "actor")[:128],
+                                caller_request_id=self.headers.get("X-Auriga-Request-Id", "")[:128])
+                            identity = dict(logical_call_index=number, logical_call_id=f"{owner.transport_id}:{number}",
+                                            endpoint=route.endpoint, native_thread_id=native_thread_id, **attribution)
+                            if not actor:
+                                identity["upstream"] = binding.name
+                            state = dict(identity=identity, client=self.connection, process=None,
+                                         cancel=threading.Event(), finished=threading.Event(), cancel_reason=None,
+                                         reading_client_body=True, route=route)
+                            if not actor:
+                                state["binding"] = binding
+                            if not owner.active:
+                                owner._wait_started_at = time.monotonic()
+                            owner.active[number] = state
+                        notify_limit = exhausted and not owner.limit_notified
+                        if notify_limit:
+                            owner.limit_notified = True
+                if refusal is not None:
+                    self.refuse(wire.denial(refusal), length)
+                    return
                 if denied:
                     event = owner._record("model_budget_exhausted" if exhausted else "model_budget_reserved",
                                           completed_calls=owner.request_count, reserved_calls=owner.reserved_calls,
                                           max_requests=owner.max_requests)
-                    self.send_error(429, "episode model completion budget unavailable")
+                    self.refuse(wire.denial("budget"), length)
                     if notify_limit and owner.on_limit:
                         owner.callbacks.put((owner.on_limit, event))
                     return
                 started, streaming, delivered, charged = time.monotonic(), False, False, False
+                continuity = None  # ContinuityTracker inputs of this call (non-Codex profiles only)
+                call_purpose = None  # its admitted call_purpose, committed with the same inputs
+                idle = None  # its consume-guard verdict (client_loop_guard profiles only)
+                # stream_open: the 200 event-stream head was already sent (early_stream profiles only);
+                # a deferred profile sends nothing until the attempt is validated.
+                stream_open = False
                 io_lock = threading.Lock()
                 heartbeat_stop = threading.Event()
+                keepalive = wire.keepalive_frame()
                 def heartbeat():
-                    while not heartbeat_stop.wait(1):
+                    while not heartbeat_stop.wait(wire.keepalive_interval_s):
                         try:
                             with io_lock:
-                                # Codex times parsed SSE events, so comments do
-                                # not keep its idle watchdog alive. Unknown
-                                # event types are ignored without model output.
-                                self.wfile.write(b'event: auriga.keepalive\ndata: {"type":"auriga.keepalive"}\n\n')
+                                self.wfile.write(keepalive)
                                 self.wfile.flush()
                         except OSError:
                             owner._cancel(state, "client_disconnected")
@@ -1236,48 +1813,73 @@ class ModelRequestProxy:
                 try:
                     owner._record("model_call_started", **identity, phase="reading_client_body")
                     self.connection.settimeout(None)
-                    body = self.rfile.read(length)
+                    received = self.rfile.read(length)
                     with owner.lock:
                         state["reading_client_body"] = False
-                    if len(body) != length:
+                    if len(received) != length:
                         raise ConnectionError("incomplete client request")
-                    owner._record("model_request_body_received", **identity, body_bytes=len(body),
-                                  elapsed_s=time.monotonic()-started, body_sha256=hashlib.sha256(body).hexdigest())
+                    owner._record("model_request_body_received", **identity, body_bytes=len(received),
+                                  elapsed_s=time.monotonic()-started, body_sha256=hashlib.sha256(received).hexdigest())
+                    body = wire.decode_body(self.headers, received)
+                    decoded = body is not received  # the wire changed the encoding: drop Content-Encoding
+                    if wire.client_loop_guard and (runaway := owner._runaway_admission(native_thread_id, body)):
+                        owner._block_runaway(state, runaway)
+                        self.send_reply(wire.denial("client_retry_runaway"))
+                        return
                     request = json.loads(body)
-                    if owner.request_context is not None:
+                    projected = False
+                    if actor and owner.request_context is not None:
                         # Snapshot once per logical request; retries reuse the filtered body.
                         request = owner.request_context(request, dict(identity))
-                    if owner.request_projection is not None:
-                        request = owner.request_projection(request)
-                    if owner.request_context is not None or owner.request_projection is not None:
+                        projected = True
+                    projection = self.binding_projection(binding)
+                    if projection is not None:
+                        request = projection(request)
+                        projected = True
+                    if actor and owner.continuity is not None and isinstance(request, dict):
+                        # The body as the agent sent it (after the egress projection), before the
+                        # relay's own image trim/reuse below.
+                        continuity = wire.continuity_inputs(request)
+                        flags = wire.history_model_output_flags(request) if wire.client_loop_guard else None
+                        admitted = owner._observe_continuity(state, chain_thread, continuity, flags)
+                        call_purpose, idle = admitted.call_purpose, admitted.idle
+                        if admitted.refused is not None:
+                            # Consume guard: refused before forwarding, never charged.
+                            owner._block_unconsumed(state, admitted.refused)
+                            self.send_reply(wire.denial("client_retry_runaway"))
+                            return
+                    tier = owner.service_tier if actor else None
+                    if tier is not None and wire.supports_service_tier and not route.compaction and isinstance(request, dict):
+                        request = dict(request, service_tier=tier)
+                    if projected or tier is not None:
                         body = json.dumps(request, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode()
-                    if self.path.rstrip("/").endswith("/responses"):
+                    if actor and not route.compaction:
                         state["base_request"] = request
                         state["base_body"] = body
                         request, body = owner._prepare_responses_body(state, request, body)
-                    identity["requested_model"] = request.get("model")
-                    streaming = request.get("stream") is True
+                    identity["requested_model"] = wire.requested_model(request)
+                    streaming = wire.is_streaming(request)
                     self.connection.settimeout(None)
-                    if streaming:
+                    if streaming and wire.early_stream:
                         self.send_response(200)
                         self.send_header("Content-Type", "text/event-stream")
                         self.send_header("Connection", "close")
                         self.end_headers()
-                        threading.Thread(target=heartbeat, daemon=True).start()
+                        stream_open = True
+                        if keepalive is not None:
+                            threading.Thread(target=heartbeat, daemon=True).start()
                     threading.Thread(target=owner._watch_client, args=(state,), daemon=True).start()
-                    headers = {k: v for k, v in self.headers.items() if k.lower() not in HOP_HEADERS | PRIVATE_HEADERS}
-                    headers = {k: v for k, v in headers.items() if k.lower() != "accept-encoding"}
-                    if owner._upstream_auth_headers is not None:
-                        headers = {k: v for k, v in headers.items() if k.lower() not in CLIENT_AUTH_HEADERS}
-                        headers.update(owner._upstream_auth_headers)
-                    headers["Accept-Encoding"] = "identity"
-                    raw, response_headers = owner._complete(state, body, headers, self.path)
+                    headers = owner._upstream_headers(self.headers, decoded=decoded, binding=binding)
+                    raw, response_headers = owner._complete(state, body, headers, route.upstream_path)
                     with owner.lock:
                         if state["cancel"].is_set() or owner.closed:
                             raise owner.policy.InfrastructureFailure("model call cancelled before delivery")
+                    if call_purpose == MAIN_CALL and state.get("context_edit_applied"):
+                        # The provider edited the main chain's context server-side: what it saw is not the history.
+                        owner._context_discontinuity(state, PROVIDER_CONTEXT_EDIT)
                     heartbeat_stop.set()
                     with io_lock:
-                        if not streaming:
+                        if not stream_open:
                             self.send_response(200)
                             for key, value in response_headers.items():
                                 if key.lower() not in HOP_HEADERS:
@@ -1301,6 +1903,12 @@ class ModelRequestProxy:
                             owner.request_count += 1
                             owner.reserved_calls -= 1
                             charged = True
+                            if continuity is not None:
+                                # Only a delivered usable main completion becomes the thread's baseline.
+                                owner.continuity.commit(chain_thread, call_purpose=call_purpose, **continuity)
+                                if wire.client_loop_guard:
+                                    owner._commit_idle_run(chain_thread, call_purpose, continuity["fingerprints"],
+                                                           idle)
                         owner._record("model_call_completed", **identity, completed_calls=owner.request_count,
                                       outgoing_bytes=len(raw))
                 except (Exception, owner.policy.InfrastructureFailure) as error:
@@ -1311,26 +1919,15 @@ class ModelRequestProxy:
                                   manual_retry_required=not state["cancel"].is_set() or state["cancel_reason"] == "client_disconnected",
                                   error=state.get("failure_evidence"))
                     try:
+                        reply = wire.relay_error(streaming=stream_open, evidence=state.get("failure_evidence"),
+                                                 manual_retry_allowed=bool(state.get("provider_explicit_error")))
                         with io_lock:
-                            if streaming:
-                                details = dict(type="upstream_error", code="model_request_failed",
-                                    message="Model request failed; provider-error retry policy exhausted or not applicable.",
-                                    evidence=state.get("failure_evidence"),
-                                    manual_retry_allowed=bool(state.get("provider_explicit_error")))
-                                self.wfile.write(("event: error\ndata: " + json.dumps(dict(type="error", error=details)) + "\n\n").encode())
+                            if stream_open:
+                                # Never end an open client stream without a terminal event.
+                                self.wfile.write(reply.body)
                                 self.wfile.flush()
                             else:
-                                data = json.dumps(dict(error=dict(code="model_request_failed",
-                                    message="Model request failed; provider-error retry policy exhausted or not applicable.",
-                                    evidence=state.get("failure_evidence"),
-                                    manual_retry_allowed=bool(state.get("provider_explicit_error"))))).encode()
-                                self.send_response((state.get("failure_evidence") or {}).get("http_status") or 502)
-                                self.send_header("Content-Type", "application/json")
-                                self.send_header("Content-Length", str(len(data)))
-                                self.send_header("Connection", "close")
-                                self.end_headers()
-                                self.wfile.write(data)
-                                self.wfile.flush()
+                                self.send_reply(reply)
                     except OSError:
                         pass
                 finally:
@@ -1349,6 +1946,11 @@ class ModelRequestProxy:
                                   elapsed_s=time.monotonic()-started, cancelled=state["cancel"].is_set(),
                                   failed_response_delivered=bool(delivered and state.get("delivering_failed_response")))
 
+        if "GET" in wire.methods:
+            # Codex keeps the standard 501 page for GET (no do_GET attribute); wires that list
+            # GET answer it through the same routing (``GET /v1/models`` → local 404).
+            Handler.do_GET = Handler.do_POST
+
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.server.daemon_threads = True
         self.server.block_on_close = False
@@ -1360,9 +1962,18 @@ class ModelRequestProxy:
     def close(self):
         with self.lock:
             self.closed = True
+            auxiliary = list(self._aux_connections)
+        for connection in auxiliary:
+            _InProcessAttempt._force_close(connection)
         self.cancel_pending("proxy_closed")
         with self.lock:
             active = list(self.active.values())
+        if self.wire.client_loop_guard:
+            # Each cancelled handler writes its relay_error terminal first: a client whose stream
+            # ends without a terminal re-requests in a tight loop.
+            deadline = time.monotonic() + self.SHUTDOWN_TERMINAL_GRACE_S
+            for state in active:
+                state["finished"].wait(max(0.0, deadline - time.monotonic()))
         for state in active:
             self._shutdown(state["client"])
         if self.server:

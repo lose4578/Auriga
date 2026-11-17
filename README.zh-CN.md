@@ -20,7 +20,7 @@
 
 ---
 
-**Auriga** 是面向具身机器人操作的智能体执行框架（agent harness）。模型在持续的 Codex 会话中查看相机图像和机器人状态、制定计划、调用工具、编写并审批小程序、控制机器人；Harness 负责执行边界、运行状态和证据记录。当前默认运行环境是 [RoboDojo](https://robodojo-benchmark.com/) 仿真基准与双臂 **ARX X5**。
+**Auriga** 是面向具身机器人操作的智能体执行框架（agent harness）。模型在持续的智能体会话中——Codex（默认）、Claude Code 或 OpenCode——查看相机图像和机器人状态、制定计划、调用工具、编写并审批小程序、控制机器人；Harness 负责执行边界、运行状态和证据记录。当前默认运行环境是 [RoboDojo](https://robodojo-benchmark.com/) 仿真基准与双臂 **ARX X5**。
 
 不同于为特定任务编写固定脚本或直接交给开环策略，Auriga 的核心思路是**由模型主导决策，由 Harness 提供与具体任务无关的闭环感知与执行边界**：
 - **先推演再执行**：模型通过标定多视角几何与三维点云定位目标，在仿真暂停状态下预览双臂多阶段候选轨迹，确认无误后再真正驱动机械臂。
@@ -63,7 +63,7 @@
 
 ## 工具列表
 
-初始会话中直接暴露 10 个核心工具，其余工具通过 Codex 原生工具搜索按需加载。每个工具在 [`auriga/runtime/tools/definitions.py`](auriga/runtime/tools/definitions.py) 中声明输入/输出 schema、物理单位（`m`、`rad`、`deg`、`s`）、默认值和范围。
+在 Codex 上，初始会话中直接暴露 10 个核心工具，其余工具通过原生工具搜索按需加载；Claude Code 与 OpenCode 会一次性发布完整工具目录。每个工具在 [`auriga/runtime/tools/definitions.py`](auriga/runtime/tools/definitions.py) 中声明输入/输出 schema、物理单位（`m`、`rad`、`deg`、`s`）、默认值和范围。
 
 | 工具 | 作用 |
 | :--- | :--- |
@@ -148,6 +148,25 @@ mamba run -n Auriga python -m auriga.apps.gateway --print-config
 
 全部可配字段见 [Configuration Guide](docs/development/configuration.md) 和 [完整示例](configs/auriga.example.json)。
 
+### 选择智能体运行时
+
+Auriga 通过可替换的智能体运行时驱动 actor。`agent.backend`（单次运行可用 `--agent-backend` 覆盖）决定使用哪一个：`codex`（默认，`~/.codex`，Responses 协议）、`claude_code` 或 `opencode`。
+
+- **Claude Code**：`mamba run -n Auriga python -m pip install -e '.[claude]' -c requirements-claude.lock.txt`（固定 `claude-agent-sdk==0.2.180`，其内置 Claude Code CLI `2.1.321`）。将 `agent.claude_code.upstream` 设为显式的 `anthropic_messages` 端点（`base_url`、`api_key_env`），或通过 `source: "claude_settings"` 和 `settings: "claude.local.json"` 读取 `configs/claude.local.json` 中的官方 Claude Code 配置格式。后者支持转发供应商环境参数，真实凭据由网关保管。
+- **OpenCode**：`npm i --prefix <安装目录> --save-exact opencode-ai@1.19.5`，然后将 `agent.opencode.executable` 指向安装得到的平台二进制文件的绝对路径（不是 Node 包装脚本）。需要 `PATH` 中有 `ripgrep`（`rg`）。将 `agent.opencode.upstream` 设为经 relay 代理的协议（`anthropic_messages` 或 `openai_responses`）。
+
+上游凭据只配置环境变量的**名称**，绝不配置其值：`agent.<backend>.upstream.api_key_env` 指定网关进程启动时读取的变量名（例如 `ANTHROPIC_API_KEY`）；智能体进程本身只会看到本地占位密钥以及本次运行自己的 relay/MCP 端点。
+
+启动时指定供应商实际提供的模型名（默认配置仍使用 Codex 模型）：
+
+```bash
+mamba run -n Auriga python -u -m auriga.apps.gateway \
+  --agent-backend claude_code --model <provider-model-id> --effort high \
+  --gpu 0 --port 8767 --run-dir runs/claude-first-task
+```
+
+架构、各后端配置、原生能力策略以及跨后端对比实验的协议，见 [Agent Backends 指南](docs/development/agent-backends.md)。
+
 ---
 
 ## 快速开始
@@ -162,7 +181,7 @@ mamba run -n Auriga python -u -m auriga.apps.gateway \
   --gpu 0 --port 8767 --run-dir runs/my-first-task
 ```
 
-打开 **<http://127.0.0.1:8767>** 查看相机画面、原生 Codex 终端、动作预览与运行记录。
+打开 **<http://127.0.0.1:8767>** 查看相机画面、原生智能体终端（取决于所选后端是否提供）、动作预览与运行记录。
 
 ### 2. 回放、检索与高清导出
 
@@ -189,7 +208,7 @@ mamba run -n Auriga python -m auriga.apps.replay.hd_replay --source-run runs/my-
 
 ## 安全边界
 
-生成的代码默认以启动用户的身份运行（`features.sandbox_enabled=false`）：原生 Codex 命令、子代理和 `program_run` 可访问当前用户有权访问的文件和网络，由 Harness 的应用层边界负责隔离（观察过滤、动作准入、程序审核）。
+生成的代码默认以启动用户的身份运行（`features.sandbox_enabled=false`）：原生智能体命令、子代理和 `program_run` 可访问当前用户有权访问的文件和网络，由 Harness 的应用层边界负责隔离（观察过滤、动作准入、程序审核）。
 
 在具备 `bubblewrap`、Landlock ABI ≥ 4 和 `libseccomp` 的 Linux 主机上，可通过 `{"version": 1, "features": {"sandbox_enabled": true}}` 开启 OS 级沙箱；隔离条件不满足时启动直接失败，不会静默降级。详见 [Code Execution Sandbox](docs/development/configuration.md#code-execution-sandbox)。请将凭据保存在 `~/.codex`，不要提交到仓库。
 
@@ -202,7 +221,7 @@ auriga/        Python 包，六层结构；模块级 import 只指向下层
   core/          协议契约、配置、信息边界、存储、模型侧展示
   robot/         机器人模型与标定、动作契约与运动规划算法、RoboDojo 后端
   perception/    图像测量、叠加图、可选外部感知、RGB-D、场景存储
-  cortex/        Codex 会话与沙箱、actor 启动上下文、回合监督
+  cortex/        智能体会话后端（Codex / Claude Code / OpenCode）与沙箱、actor 启动上下文、回合监督
   runtime/       Harness、robot_action 编排、工具注册与插件、程序、策略桥接
   apps/          网关/工作台、实验库、评测队列、高清重放、参考基线
 web/           工作台与实验库前端（构建后打入包内）
@@ -216,7 +235,7 @@ third_party/   带许可证的第三方固定资料（Codex 模型目录、RoboP
 docs/          英文开发指南、设计文档与感知说明
 ```
 
-**代码导读**：[`auriga/apps/gateway/cli.py`](auriga/apps/gateway/cli.py) 构建 [`Workbench`](auriga/apps/gateway/workbench.py)，启动 Codex 会话（[`auriga/cortex/session/codex.py`](auriga/cortex/session/codex.py)）和 [`Harness`](auriga/runtime/harness.py)。工具在 [`auriga/runtime/tools/definitions.py`](auriga/runtime/tools/definitions.py) 声明、由 [`auriga/runtime/tools/builtins.py`](auriga/runtime/tools/builtins.py) 装配；`robot_action` 位于 [`auriga/runtime/actions/unified_actions.py`](auriga/runtime/actions/unified_actions.py)。物理执行从 [`Harness.execute`](auriga/runtime/harness.py) 经 [`auriga/robot/backends/robodojo/robot_process.py`](auriga/robot/backends/robodojo/robot_process.py) 发往在 RoboDojo 解释器中运行的 [`auriga/robot/backends/robodojo/robot_worker.py`](auriga/robot/backends/robodojo/robot_worker.py)。
+**代码导读**：[`auriga/apps/gateway/cli.py`](auriga/apps/gateway/cli.py) 构建 [`Workbench`](auriga/apps/gateway/workbench.py)，并启动所配置的智能体会话（由 `agent.backend` 决定；[`auriga/cortex/agents/factory.py`](auriga/cortex/agents/factory.py) 据此选择 [`auriga/cortex/session/codex.py`](auriga/cortex/session/codex.py) 中的 `CodexSession`、`ClaudeCodeSession` 或 `OpenCodeSession`）以及 [`Harness`](auriga/runtime/harness.py)。工具在 [`auriga/runtime/tools/definitions.py`](auriga/runtime/tools/definitions.py) 声明、由 [`auriga/runtime/tools/builtins.py`](auriga/runtime/tools/builtins.py) 装配；`robot_action` 位于 [`auriga/runtime/actions/unified_actions.py`](auriga/runtime/actions/unified_actions.py)。物理执行从 [`Harness.execute`](auriga/runtime/harness.py) 经 [`auriga/robot/backends/robodojo/robot_process.py`](auriga/robot/backends/robodojo/robot_process.py) 发往在 RoboDojo 解释器中运行的 [`auriga/robot/backends/robodojo/robot_worker.py`](auriga/robot/backends/robodojo/robot_worker.py)。各后端如何适配同一契约，见 [Agent Backends 指南](docs/development/agent-backends.md)。
 
 ---
 

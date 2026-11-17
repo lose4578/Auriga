@@ -2,7 +2,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { createPhaseReview } from './phase-review.js';
-import { mapActionVideo } from './phase-model.js';
+import { mapActionVideo, canonicalEventType, isNativeAgentEvent, backendName, agentStatus, terminalAbsent, applyAgentNames } from './phase-model.js';
 import { renderTaskReview } from './task-review.js';
 import { createCodexReplay } from './codex-replay.js';
 import { createRecordCache } from './record-cache.js';
@@ -11,7 +11,7 @@ const $ = (id) => document.getElementById(id);
 const runPrefix = location.pathname.match(/^\/runs\/[^/]+/)?.[0] || '';
 const apiURL = (path) => path?.startsWith('/v1/') ? `${runPrefix}${path}` : path;
 $('records-events').href = apiURL('/v1/events?after=0');
-const historyMode = () => currentRun && (currentRun.library?.live === false || currentRun.view_mode === 'replay' || currentRun.status === 'replay' || currentRun.codex_status === 'replay');
+const historyMode = () => currentRun && (currentRun.library?.live === false || currentRun.view_mode === 'replay' || currentRun.status === 'replay' || agentStatus(currentRun) === 'replay');
 const readOnly = () => !currentRun || currentRun.read_only === true || currentRun.writable === false || historyMode();
 if (runPrefix) { $('library-link').hidden = false; const saved = sessionStorage.getItem('auriga-library-url'); if (saved?.startsWith('/?')) $('library-link').href = saved; }
 const terminal = new Terminal({
@@ -36,7 +36,8 @@ let refreshTimer, taskAttempt, stopAttempt;
 const recordCaches = Object.fromEntries(['observations', 'items', 'requests'].map((name) => [name, createRecordCache()]));
 let incrementalRecords = true, historicalWindow = false, historyBefore, eventsWindowed = false;
 const gapMessages = new Set();
-const codexReplay = createCodexReplay({ resizeTerminal: sizeTerminal });
+const agentName = () => backendName(currentRun);
+const codexReplay = createCodexReplay({ resizeTerminal: sizeTerminal, agentName });
 const phaseReview = createPhaseReview({ read: getJSON, artifactURL, terminal, inspectEvent, onPhaseChange: (phase, position) => codexReplay.setPhase(phase, position),
   terminalReady: async () => { await terminalWrite; return Boolean(terminalSession) && terminalCursor >= terminalReplayTarget; } });
 
@@ -58,14 +59,14 @@ function applyTerminalDiagnosis(status) {
   updateTerminalNote();
   if (typeof status?.bootstrap_failed !== 'boolean') return;
   terminalBootstrapKnown = status.bootstrap_failed;
-  if (status.bootstrap_failed) codexReplay.terminalFailure('原生终端初始化失败；请在阶段记录查看已保存的 Codex 消息与工具结果。');
+  if (status.bootstrap_failed) codexReplay.terminalFailure(`原生终端初始化失败；请在阶段记录查看已保存的 ${agentName()} 消息与工具结果。`);
   else { terminalBootstrapText = ''; codexReplay.clearTerminalFailure(); }
 }
 
 function updateTerminalNote() {
   const recovered = terminalReplayInfo?.kind === 'recovered_native_tui';
   document.querySelector('.terminal-note').textContent = recovered
-    ? `原生 Codex TUI · 从保存的会话归档恢复 · ${terminalReplayInfo.recovered_at ? new Date(terminalReplayInfo.recovered_at).toLocaleString('zh-CN', { hour12: false }) : ''} · 只读`
+    ? `原生 ${agentName()} TUI · 从保存的会话归档恢复 · ${terminalReplayInfo.recovered_at ? new Date(terminalReplayInfo.recovered_at).toLocaleString('zh-CN', { hour12: false }) : ''} · 只读`
     : historyMode() ? '持久终端日志 · 只读回放' : '原生 TUI · 只读监看';
   $('terminal-original-log').hidden = !terminalReplayInfo?.original_bootstrap_failed;
   $('terminal-original-log').href = apiURL('/v1/terminal-log');
@@ -334,14 +335,17 @@ const eventLabels = {
   'job.started': '内部预演开始', 'job.completed': '内部预演已完成',
   'job.failed': '内部预演失败', 'job.cancelled': '内部预演已取消',
   'run.stopped': '运行停止已确认', 'run.stop_requested': '正在请求停止运行',
-  'codex.error': 'Codex 原生错误', 'codex.turn/started': 'Codex 轮次开始',
-  'codex.turn/completed': 'Codex 轮次结束', 'codex.connection_lost': 'Codex 上游断开',
-  'codex.history_recovered': 'Codex 历史已对账',
+  'codex.error': '{agent} 原生错误', 'codex.turn/started': '{agent} 轮次开始',
+  'codex.turn/completed': '{agent} 轮次结束', 'codex.connection_lost': '{agent} 上游断开',
+  'codex.history_recovered': '{agent} 历史已对账',
   'observer.video_exported': '观察者录像已导出',
 };
 
+// Backend-neutral lookup: agent.* aliases resolve to the codex.* entries; `{agent}` is the run's backend name.
+const labelFor = (type) => (eventLabels[canonicalEventType(type)] || '').replaceAll('{agent}', agentName()) || undefined;
+const hasLabel = (type) => Boolean(eventLabels[canonicalEventType(type)]);
 function eventLabel(event) {
-  if (event.type !== 'observation.delivered') return eventLabels[event.type] || event.type;
+  if (event.type !== 'observation.delivered') return labelFor(event.type) || event.type;
   if (event.payload?.delivered_to_model === true) return 'Astra 模型已接收观察';
   if (event.payload?.audience === 'actor_program' || event.correlation?.program_id) return '程序已接收观察';
   return '观察交付记录 · 受众待核实';
@@ -361,10 +365,10 @@ function receiveEvent(event) {
   if (event.type === 'observation.available' && !historyMode()) refreshObservation();
   if (event.type === 'observer.video_exported' && !historicalWindow) addVideoExport(event);
   if (event.type === 'observer.evaluated' || event.type?.startsWith('run.')) refreshTaskReview();
-  if (event.type === 'codex.connection_lost') markGap('Codex 上游连接丢失 · 原生 delta 历史不完整，需独立对账');
-  if (event.type === 'codex.history_recovered' && event.payload?.delta_history_complete === false) markGap('Codex 历史已对账 · 终态记录可恢复，缺失的 delta 历史仍不完整');
+  if (canonicalEventType(event.type) === 'codex.connection_lost') markGap(`${agentName()} 上游连接丢失 · 原生 delta 历史不完整，需独立对账`);
+  if (canonicalEventType(event.type) === 'codex.history_recovered' && event.payload?.delta_history_complete === false) markGap(`${agentName()} 历史已对账 · 终态记录可恢复，缺失的 delta 历史仍不完整`);
   scheduleRecords();
-  if (!eventLabels[event.type] && !event.type?.startsWith('action.') && !event.type?.startsWith('job.')) return;
+  if (!hasLabel(event.type) && !event.type?.startsWith('action.') && !event.type?.startsWith('job.')) return;
   const correlation = event.correlation || {};
   const key = correlation.action_id ? `action:${correlation.action_id}` : (correlation.job_id ? `job:${correlation.job_id}` : event.event_id);
   const existing = rows.get(key);
@@ -379,7 +383,7 @@ function receiveEvent(event) {
   label.textContent = `${eventLabel(event)} · ${correlation.action_id || correlation.observation_id || correlation.job_id || event.event_id}`;
   const state = document.createElement('span');
   state.className = `event-state ${event.type.split('.').at(-1)}`;
-  state.textContent = event.type?.startsWith('codex.') ? '原生 Codex' : event.world_kind === 'internal' ? '内部结果' : '被测世界';
+  state.textContent = isNativeAgentEvent(event.type) ? `原生 ${agentName()}` : event.world_kind === 'internal' ? '内部结果' : '被测世界';
   button.replaceChildren(sequence, label, state);
   button.onclick = () => inspectEvent(event, button);
   rows.set(key, { button, event });
@@ -406,7 +410,7 @@ async function inspectEvent(event, button) {
   $('inspector').hidden = false;
   $('inspector-title').textContent = eventLabel(event);
   const correlation = event.correlation || {};
-  $('inspector-summary').textContent = `接收序号 ${event.server_seq} · ${event.world_kind === 'internal' ? '内部结果' : '被测世界'} · Codex item ${correlation.item_id || '未关联'} · 工具调用 ${correlation.tool_call_id || '未关联'}${event.type === 'observation.delivered' ? ' · 交付受众、通道、原始图像哈希与变换见交付记录' : ''}`;
+  $('inspector-summary').textContent = `接收序号 ${event.server_seq} · ${event.world_kind === 'internal' ? '内部结果' : '被测世界'} · ${agentName()} item ${correlation.item_id || '未关联'} · 工具调用 ${correlation.tool_call_id || '未关联'}${event.type === 'observation.delivered' ? ' · 交付受众、通道、原始图像哈希与变换见交付记录' : ''}`;
   $('observation-links').replaceChildren();
   $('trace-records').replaceChildren();
   $('associated-native').replaceChildren();
@@ -511,8 +515,11 @@ async function refreshRun() {
     $('camera-heading').textContent = replay || historyMode() ? '机械臂 · 历史观察' : '机械臂 · 实时观察';
     $('return-live').textContent = historyMode() ? '返回最新记录' : '返回实时';
     updateTerminalNote();
-    document.querySelector('.terminal-panel').setAttribute('aria-label', historyMode() ? 'Codex 阶段回放与原始终端' : 'Codex 阶段记录与实时终端');
-    if (run.library?.terminal_available === false || run.terminal_available === false) {
+    document.querySelector('.terminal-panel').setAttribute('aria-label', historyMode() ? `${agentName()} 阶段回放与原始终端` : `${agentName()} 阶段记录与实时终端`);
+    applyAgentNames(document, agentName());
+    const noTerminal = terminalAbsent(run);
+    $('codex-tab-terminal').hidden = noTerminal; // backend without a native TUI (`terminal: null`): records tab only
+    if (run.library?.terminal_available === false || run.terminal_available === false || noTerminal) {
       $('codex-tab-terminal').disabled = true;
       codexReplay.setTab('records');
       socket?.close();
@@ -530,7 +537,7 @@ async function refreshRun() {
       $('terminal-status').textContent = `原生 TUI 已退出 (${run.terminal.exit_code})`;
     }
     $('run-data').textContent = JSON.stringify(run, null, 2);
-    $('turn-state').textContent = `Codex 轮次 · ${run.codex_status || '未知'} · ${run.turn_id || '尚无轮次'}`;
+    $('turn-state').textContent = `${agentName()} 轮次 · ${agentStatus(run) || '未知'} · ${run.turn_id || '尚无轮次'}`;
     $('motion-state').textContent = `机器人动作 · ${run.motion?.status || run.motion_status || '未知'} · ${run.motion?.active_action || run.active_action || '无活动动作'}`;
     updateOwnership();
   } catch (error) { $('run-status').textContent = `运行连接异常 · ${error.message}`; $('run-mode').textContent = '连接中断'; }
@@ -574,7 +581,7 @@ function updateOwnership() {
   if (readOnly()) $('task-status').textContent = currentRun ? '已保存的任务与交互保留在原生记录中' : '正在核对运行模式';
   document.querySelectorAll('.scene-panel form button,.scene-panel form textarea').forEach((input) => { input.disabled = readOnly(); });
   $('scene-snapshot').disabled = readOnly() || !$('scene-anchor').value;
-  $('submit-task').disabled = !owned || !currentRun?.accepting_actions || currentRun?.codex_status === 'running' || Boolean(currentRun?.motion?.active_action || currentRun?.active_action);
+  $('submit-task').disabled = !owned || !currentRun?.accepting_actions || agentStatus(currentRun) === 'running' || Boolean(currentRun?.motion?.active_action || currentRun?.active_action);
   document.querySelectorAll('#pending-interactions form button,#pending-interactions form input,#pending-interactions form select,#pending-interactions form textarea').forEach((input) => { input.disabled = !owned; });
 }
 

@@ -1,0 +1,634 @@
+{
+ "capture": "spike S8 controls (native grep/glob/read/bash), teardown2 (abort during a native bash call) and teardown (server killed during a native bash call); anthropic_messages wire, opencode 1.19.5; GET /session/{id}/message shape, read from the run's opencode.db after the spike ended (rows hydrated like MessageV2.hydrate); every session was idle at capture (status_after)",
+ "sanitised": [
+  "run paths -> /runs/<scenario>",
+  "loopback ports -> 127.0.0.1:0",
+  "image data URLs -> 1-pixel placeholder",
+  "response date/server headers dropped",
+  "3 KiB filler tool outputs trimmed",
+  "bash `env` output replaced by a neutral line"
+ ],
+ "evidence": [
+  "scratch/s-c/evidence/s8-controls",
+  "scratch/s-c/evidence/s8-teardown2",
+  "scratch/s-c/evidence/s8-teardown"
+ ],
+ "sessions": {
+  "grep_glob_read_bash": {
+   "session_id": "ses_e390c3fd2ffeqeiEH6eV3huaEX",
+   "status_after": {},
+   "messages": [
+    {
+     "info": {
+      "role": "user",
+      "time": {
+       "created": 1794339225660
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "relay",
+       "modelID": "claude-sonnet-4-5"
+      },
+      "id": "msg_1c6f3c03c001jafQ4r4W9pVKWm",
+      "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX"
+     },
+     "parts": [
+      {
+       "type": "text",
+       "text": "run tools",
+       "id": "prt_1c6f3c03e001o1umwncS8we5N1",
+       "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX",
+       "messageID": "msg_1c6f3c03c001jafQ4r4W9pVKWm"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6f3c03c001jafQ4r4W9pVKWm",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s8-controls-C_hardened/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 15,
+       "input": 10,
+       "output": 5,
+       "reasoning": 0,
+       "cache": {
+        "write": 0,
+        "read": 0
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794339225944,
+       "completed": 1794339226583
+      },
+      "finish": "tool-calls",
+      "id": "msg_1c6f3c158001QhZ5GNC3uCIucP",
+      "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6f3c3b8001IS2NMPXMkcC3an",
+       "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX",
+       "messageID": "msg_1c6f3c158001QhZ5GNC3uCIucP"
+      },
+      {
+       "type": "tool",
+       "tool": "grep",
+       "callID": "call_fake_0_0",
+       "state": {
+        "status": "completed",
+        "input": {
+         "pattern": "zzz",
+         "path": "."
+        },
+        "output": "No files found",
+        "metadata": {
+         "matches": 0,
+         "truncated": false
+        },
+        "title": "zzz",
+        "time": {
+         "start": 1794339226556,
+         "end": 1794339226579
+        }
+       },
+       "id": "prt_1c6f3c3b9001gNXinNu42kalhB",
+       "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX",
+       "messageID": "msg_1c6f3c158001QhZ5GNC3uCIucP"
+      },
+      {
+       "reason": "tool-calls",
+       "type": "step-finish",
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6f3c3d5001EZiABlGjxeTU2X",
+       "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX",
+       "messageID": "msg_1c6f3c158001QhZ5GNC3uCIucP"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6f3c03c001jafQ4r4W9pVKWm",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s8-controls-C_hardened/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 15,
+       "input": 10,
+       "output": 5,
+       "reasoning": 0,
+       "cache": {
+        "write": 0,
+        "read": 0
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794339226584,
+       "completed": 1794339226601
+      },
+      "finish": "tool-calls",
+      "id": "msg_1c6f3c3d8001ogsyz2bsFi8jIZ",
+      "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6f3c3de001rbVFD4Qmbjj5ay",
+       "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX",
+       "messageID": "msg_1c6f3c3d8001ogsyz2bsFi8jIZ"
+      },
+      {
+       "type": "tool",
+       "tool": "glob",
+       "callID": "call_fake_1_0",
+       "state": {
+        "status": "completed",
+        "input": {
+         "pattern": "**/*"
+        },
+        "output": "No files found",
+        "metadata": {
+         "count": 0,
+         "truncated": false
+        },
+        "title": "private/runs/s8-controls-C_hardened/actor",
+        "time": {
+         "start": 1794339226593,
+         "end": 1794339226599
+        }
+       },
+       "id": "prt_1c6f3c3df001zAAKJ5Xoh1RdbI",
+       "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX",
+       "messageID": "msg_1c6f3c3d8001ogsyz2bsFi8jIZ"
+      },
+      {
+       "reason": "tool-calls",
+       "type": "step-finish",
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6f3c3e8001hXNPxZh0JSudnM",
+       "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX",
+       "messageID": "msg_1c6f3c3d8001ogsyz2bsFi8jIZ"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6f3c03c001jafQ4r4W9pVKWm",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s8-controls-C_hardened/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 15,
+       "input": 10,
+       "output": 5,
+       "reasoning": 0,
+       "cache": {
+        "write": 0,
+        "read": 0
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794339226601,
+       "completed": 1794339226611
+      },
+      "finish": "tool-calls",
+      "id": "msg_1c6f3c3e90014witzLbhoQbuIU",
+      "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6f3c3ee001wR8o9OjWUh2mfI",
+       "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX",
+       "messageID": "msg_1c6f3c3e90014witzLbhoQbuIU"
+      },
+      {
+       "type": "tool",
+       "tool": "read",
+       "callID": "call_fake_2_0",
+       "state": {
+        "status": "error",
+        "input": {
+         "filePath": "hello.txt"
+        },
+        "error": "File not found: /runs/s8-controls-C_hardened/actor/hello.txt",
+        "time": {
+         "start": 1794339226608,
+         "end": 1794339226609
+        }
+       },
+       "id": "prt_1c6f3c3ee002DSKWxfr5gp4c5q",
+       "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX",
+       "messageID": "msg_1c6f3c3e90014witzLbhoQbuIU"
+      },
+      {
+       "reason": "tool-calls",
+       "type": "step-finish",
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6f3c3f2001uI40sUfK0nl8Ov",
+       "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX",
+       "messageID": "msg_1c6f3c3e90014witzLbhoQbuIU"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6f3c03c001jafQ4r4W9pVKWm",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s8-controls-C_hardened/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 15,
+       "input": 10,
+       "output": 5,
+       "reasoning": 0,
+       "cache": {
+        "write": 0,
+        "read": 0
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794339226612,
+       "completed": 1794339226643
+      },
+      "finish": "tool-calls",
+      "id": "msg_1c6f3c3f4001dhmxdJyRy8m5mB",
+      "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6f3c3f700115m81A07gxaEFr",
+       "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX",
+       "messageID": "msg_1c6f3c3f4001dhmxdJyRy8m5mB"
+      },
+      {
+       "type": "tool",
+       "tool": "bash",
+       "callID": "call_fake_3_0",
+       "state": {
+        "status": "completed",
+        "input": {
+         "command": "echo hi > hello.txt; ls",
+         "description": "write file"
+        },
+        "output": "hello.txt\n",
+        "metadata": {
+         "output": "hello.txt\n",
+         "exit": 0,
+         "truncated": false
+        },
+        "title": "echo hi > hello.txt; ls",
+        "time": {
+         "start": 1794339226618,
+         "end": 1794339226642
+        }
+       },
+       "id": "prt_1c6f3c3f8001f1Z3wwx9f6jkY3",
+       "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX",
+       "messageID": "msg_1c6f3c3f4001dhmxdJyRy8m5mB"
+      },
+      {
+       "reason": "tool-calls",
+       "type": "step-finish",
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6f3c412001YPXsCzakCLnwBP",
+       "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX",
+       "messageID": "msg_1c6f3c3f4001dhmxdJyRy8m5mB"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6f3c03c001jafQ4r4W9pVKWm",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s8-controls-C_hardened/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "total": 15,
+       "input": 10,
+       "output": 5,
+       "reasoning": 0,
+       "cache": {
+        "write": 0,
+        "read": 0
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794339226644,
+       "completed": 1794339226652
+      },
+      "finish": "stop",
+      "id": "msg_1c6f3c414001BAKwrtuAMhYqJP",
+      "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6f3c4190012bXYgK8XhbCwGt",
+       "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX",
+       "messageID": "msg_1c6f3c414001BAKwrtuAMhYqJP"
+      },
+      {
+       "type": "text",
+       "text": "CONTROL-DONE",
+       "time": {
+        "start": 1794339226650,
+        "end": 1794339226650
+       },
+       "id": "prt_1c6f3c41a001lOFGwKVkfPt8qG",
+       "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX",
+       "messageID": "msg_1c6f3c414001BAKwrtuAMhYqJP"
+      },
+      {
+       "reason": "stop",
+       "type": "step-finish",
+       "tokens": {
+        "total": 15,
+        "input": 10,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+         "write": 0,
+         "read": 0
+        }
+       },
+       "cost": 0,
+       "id": "prt_1c6f3c41b001MgBeYf050vPkQg",
+       "sessionID": "ses_e390c3fd2ffeqeiEH6eV3huaEX",
+       "messageID": "msg_1c6f3c414001BAKwrtuAMhYqJP"
+      }
+     ]
+    }
+   ]
+  },
+  "abort_during_bash": {
+   "session_id": "ses_e390b36dcffeTNNQwD10C8kw33",
+   "status_after": {},
+   "messages": [
+    {
+     "info": {
+      "role": "user",
+      "time": {
+       "created": 1794339293484
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "relay",
+       "modelID": "claude-sonnet-4-5"
+      },
+      "id": "msg_1c6f4c92c001lcFcciKrViFOV9",
+      "sessionID": "ses_e390b36dcffeTNNQwD10C8kw33"
+     },
+     "parts": [
+      {
+       "type": "text",
+       "text": "sleep",
+       "id": "prt_1c6f4c92e001YVUQtmW1w7u0c5",
+       "sessionID": "ses_e390b36dcffeTNNQwD10C8kw33",
+       "messageID": "msg_1c6f4c92c001lcFcciKrViFOV9"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6f4c92c001lcFcciKrViFOV9",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s8-teardown2-abort_then_stop/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794339293742,
+       "completed": 1794339313751
+      },
+      "error": {
+       "name": "MessageAbortedError",
+       "data": {
+        "message": "Aborted"
+       }
+      },
+      "id": "msg_1c6f4ca2e001EckIJOXT6V5v8m",
+      "sessionID": "ses_e390b36dcffeTNNQwD10C8kw33"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6f4cc8a001Ri16buz8j9WXLr",
+       "sessionID": "ses_e390b36dcffeTNNQwD10C8kw33",
+       "messageID": "msg_1c6f4ca2e001EckIJOXT6V5v8m"
+      },
+      {
+       "type": "tool",
+       "tool": "bash",
+       "callID": "call_fake_0_0",
+       "state": {
+        "status": "completed",
+        "input": {
+         "command": "sleep 120 & sleep 120; echo done",
+         "description": "sleep",
+         "timeout": 600000
+        },
+        "output": "(no output)\n\n<shell_metadata>\nUser aborted the command\n</shell_metadata>",
+        "metadata": {
+         "output": "(no output)\n\n<shell_metadata>\nUser aborted the command\n</shell_metadata>",
+         "exit": null,
+         "truncated": false
+        },
+        "title": "sleep 120 & sleep 120; echo done",
+        "time": {
+         "start": 1794339294352,
+         "end": 1794339313750
+        }
+       },
+       "id": "prt_1c6f4cc8c001LbOxNIHB0H1Riv",
+       "sessionID": "ses_e390b36dcffeTNNQwD10C8kw33",
+       "messageID": "msg_1c6f4ca2e001EckIJOXT6V5v8m"
+      }
+     ]
+    }
+   ]
+  },
+  "server_killed_during_bash": {
+   "note": "opencode serve killed (killpg) while the bash tool ran; the DB keeps the part running",
+   "session_id": "ses_e390c1236ffeBjRb5U7S67H03H",
+   "status_after": {},
+   "messages": [
+    {
+     "info": {
+      "role": "user",
+      "time": {
+       "created": 1794339237331
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "relay",
+       "modelID": "claude-sonnet-4-5"
+      },
+      "id": "msg_1c6f3edd3001sWzH3FUGOF1IFX",
+      "sessionID": "ses_e390c1236ffeBjRb5U7S67H03H"
+     },
+     "parts": [
+      {
+       "type": "text",
+       "text": "sleep",
+       "id": "prt_1c6f3edd5001Bt0xHd35ww6sFK",
+       "sessionID": "ses_e390c1236ffeBjRb5U7S67H03H",
+       "messageID": "msg_1c6f3edd3001sWzH3FUGOF1IFX"
+      }
+     ]
+    },
+    {
+     "info": {
+      "parentID": "msg_1c6f3edd3001sWzH3FUGOF1IFX",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/runs/s8-teardown-killpg/actor",
+       "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "modelID": "claude-sonnet-4-5",
+      "providerID": "relay",
+      "time": {
+       "created": 1794339237596
+      },
+      "id": "msg_1c6f3eedc001k7MYZQLjY2s51N",
+      "sessionID": "ses_e390c1236ffeBjRb5U7S67H03H"
+     },
+     "parts": [
+      {
+       "type": "step-start",
+       "id": "prt_1c6f3f0ee0014Qqub3aAtq9ugQ",
+       "sessionID": "ses_e390c1236ffeBjRb5U7S67H03H",
+       "messageID": "msg_1c6f3eedc001k7MYZQLjY2s51N"
+      },
+      {
+       "type": "tool",
+       "tool": "bash",
+       "callID": "call_fake_0_0",
+       "state": {
+        "metadata": {
+         "output": ""
+        },
+        "status": "running",
+        "input": {
+         "command": "sleep 120 & sleep 120; echo done",
+         "description": "sleep",
+         "timeout": 600000
+        },
+        "time": {
+         "start": 1794339238131
+        }
+       },
+       "id": "prt_1c6f3f0ef001yOK3bBOPRyjScG",
+       "sessionID": "ses_e390c1236ffeBjRb5U7S67H03H",
+       "messageID": "msg_1c6f3eedc001k7MYZQLjY2s51N"
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

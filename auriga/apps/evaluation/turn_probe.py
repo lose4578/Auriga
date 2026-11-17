@@ -29,6 +29,7 @@ from .checkpoint import (
     _hydrate_runtime_perception_state,
     prepare_checkpoint_slice,
     recompute_tool_output,
+    require_codex_archive,
 )
 from ...core.config import Config
 from ...core.contracts import canonical
@@ -290,6 +291,7 @@ def probe_forked_turn(
 ) -> dict:
     """在切点处利用 Codex 原生 `thread/fork` 启动反事实探针，完整支持 preview -> execute 与 program_run 内部动作拦截。"""
     source_run = Path(source_run).resolve()
+    require_codex_archive(source_run)
     if work_dir is None:
         work_dir = Path(tempfile.mkdtemp(prefix=f"slice-probe-{source_run.name[:24]}-"))
     else:
@@ -536,6 +538,7 @@ def run_live_slice(
     from ...runtime.programs.runner import ProgramRunner
 
     source_run = Path(source_run).resolve()
+    require_codex_archive(source_run)
     explicit_call_id = until_call_id
     until_call_id, until_action_id = _resolve_cutpoint_ids(
         source_run,

@@ -11,6 +11,10 @@ from ...core.presentation.observation_output import saved_observation_state
 from ..context import operation_verification
 
 MODEL = 'gpt-6.1-sol'
+# Request-artifact labels of the native Codex evidence agent (the default client); another client (the relay
+# evidence client) names itself with ``backend_label`` / ``context_policy`` class attributes.
+DEFAULT_BACKEND = 'official_codex_app_server_sdk'
+DEFAULT_CONTEXT_POLICY = 'fresh_ephemeral_thread_selected_evidence_only_v1'
 ANSWER_SCHEMA = dict(type='object', additionalProperties=False, properties=dict(
     visibility_after=dict(type='string', enum=['visible','partly_visible','not_visible','uncertain']),
     motion=dict(type='string', enum=['displaced','roughly_stationary','uncertain']),
@@ -19,11 +23,25 @@ ANSWER_SCHEMA = dict(type='object', additionalProperties=False, properties=dict(
     evidence=dict(type='string')), required=['visibility_after','motion','after_center_px','retained_with_gripper','evidence'])
 
 
+def _label(client, name, default):
+    value = getattr(client, name, None)
+    return value if isinstance(value, str) and value else default
+
+
 class VisualReviewer:
     def __init__(self, client):
         if client.model != MODEL:
             raise ValueError('visual_reviewer_requires_exact_gpt_6_1_sol')
         self.client = client
+
+    # Recorded in the visual_model_request artifact: which evidence client answers and its context policy.
+    @property
+    def backend_label(self):
+        return _label(self.client, 'backend_label', DEFAULT_BACKEND)
+
+    @property
+    def context_policy(self):
+        return _label(self.client, 'context_policy', DEFAULT_CONTEXT_POLICY)
 
     def review_operation(self, store, identity, *, phase, target, expected_result, action_ids,
                          before_observation_id, after_observation_id, camera_id, roi,
@@ -74,7 +92,7 @@ class VisualReviewer:
                              dict(type='image', url=url)])
         schema = operation_verification.ANSWER_SCHEMA
         payload = dict(model=MODEL, effort='high', input=contents, outputSchema=schema,
-                       backend='official_codex_app_server_sdk', context_policy='fresh_ephemeral_thread_selected_evidence_only_v1')
+                       backend=self.backend_label, context_policy=self.context_policy)
         request_ref = store.put_artifact(canonical(payload).encode(), 'visual_model_request', 'application/json', 'observer')
         request_id = new_id('visual-review')
         record = dict(model=MODEL, request_id=request_id, request_ref=request_ref, sources=sources,
@@ -145,7 +163,7 @@ class VisualReviewer:
             contents.extend([dict(type='text',text=label + (' (lossy video reconstruction)' if source.get('reconstruction') else '')
                 + '\n' + canonical(presentation.present(saved_observation_state(store, observation_id)))), dict(type='image', url=url)])
         payload = dict(model=MODEL, effort='high', input=contents, outputSchema=schema,
-                       backend='official_codex_app_server_sdk', context_policy='fresh_ephemeral_thread_selected_evidence_only_v1')
+                       backend=self.backend_label, context_policy=self.context_policy)
         request_ref = store.put_artifact(canonical(payload).encode(),'visual_model_request','application/json','observer')
         request_id = new_id("visual-review")
         record = dict(model=MODEL, request_id=request_id, request_ref=request_ref, sources=sources,

@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "check": "node --check build.mjs && node --check app.js && node --check library.js && node --check library-scroll.js && node --check task-review.js && node --check codex-replay.js && node --check check-task-review.mjs && node --check check-native-terminal.mjs && node --check check-trajectory-download.mjs && node --check task-labels.js && node --check phase-review.js && node --check phase-model.js && node --check check-library.mjs && node --check check-phases.mjs && node --check check-phase-continuity.mjs && node --check comparison-view.js && node --check experiment-media.js && node --check check-comparisons.mjs && node --test comparison-model.test.mjs phase-model.test.mjs experiment-metrics.test.mjs record-cache.test.mjs",
+    "check": "node --check build.mjs && node --check app.js && node --check library.js && node --check library-scroll.js && node --check task-review.js && node --check codex-replay.js && node --check check-task-review.mjs && node --check check-native-terminal.mjs && node --check check-trajectory-download.mjs && node --check task-labels.js && node --check phase-review.js && node --check phase-model.js && node --check check-library.mjs && node --check check-phases.mjs && node --check check-phase-continuity.mjs && node --check comparison-view.js && node --check experiment-media.js && node --check check-comparisons.mjs && node --test agent-backend.test.mjs comparison-model.test.mjs phase-model.test.mjs experiment-metrics.test.mjs record-cache.test.mjs",
     "check:browser": "node check-browser.mjs",
     "check:comparisons": "node check-comparisons.mjs"
   },

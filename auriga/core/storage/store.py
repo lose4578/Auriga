@@ -86,6 +86,11 @@ def open_read_store(root, identity=None, *, live=False):
 
 
 class Store:
+    # Backend-neutral transcript rows live in the historical "codex_item" state kind
+    # (design 5.1); new code goes through the helpers below so a rename is one constant.
+    TRANSCRIPT_KIND = "codex_item"
+    RAW_AGENT_CHANNELS = ("native", "mcp", "control")
+
     def __init__(self, root, identity, read_only=False, immutable=False):
         self.root = Path(root).resolve()
         self.read_only = read_only
@@ -415,6 +420,24 @@ class Store:
         self._require_writer()
         with self.lock, (self.root / "codex-raw.jsonl").open("a") as stream:
             stream.write(canonical(dict(received_at=utc_now(), direction=direction, message=message)) + "\n")
+
+    def raw_agent(self, direction, message, *, channel):
+        """Append one agent-backend wire record to agent-raw.jsonl.
+
+        channel: "native" (SDK messages / SSE events / HTTP calls), "mcp" (MCP JSON-RPC)
+        or "control" (host->agent commands such as prompt submission and interrupt).
+        """
+        if channel not in self.RAW_AGENT_CHANNELS:
+            raise ValueError("invalid_agent_raw_channel")
+        self._require_writer()
+        with self.lock, (self.root / "agent-raw.jsonl").open("a") as stream:
+            stream.write(canonical(dict(received_at=utc_now(), direction=direction, channel=channel, message=message)) + "\n")
+
+    def transcript_item(self, identifier, default=None):
+        return self.read_state(self.TRANSCRIPT_KIND, identifier, default)
+
+    def set_transcript_item(self, identifier, value):
+        return self.set_state(self.TRANSCRIPT_KIND, identifier, value)
 
     def recorded_task_instruction(self):
         with self.lock:

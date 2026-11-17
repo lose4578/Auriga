@@ -13,7 +13,7 @@ from .experiments import RUN_TIME_FIELDS, excluded_path, read_json, utc_timestam
 
 CASE_FIELDS = ("case_id", "task", "variant", "eval_seed", "layout_id", "reset_seed", "max_control_steps", "control_dt_s")
 SUMMARY_FIELDS = ("task_success", "normalized_score", "valid_episode", "scored_episode", "score_status", "primary_outcome", "termination_reason", "cleanup_status")
-CONDITION_FIELDS = ("observation_profile", "default_task_notes", "visual_review_model", "pi05", "task_notes", "preloaded_notes", "native_memories", "cross_episode_memory", "extra_models", "extra_demonstrations", "official_task_rules", "sandbox_enabled")
+CONDITION_FIELDS = ("observation_profile", "default_task_notes", "visual_review_model", "pi05", "task_notes", "preloaded_notes", "native_memories", "cross_episode_memory", "extra_models", "extra_demonstrations", "official_task_rules", "sandbox_enabled", "agent_backend", "evidence_client", "native_effort")
 PRUNED = {"private", "source", "sources", "source-snapshot", "runs", "cases", "queue", "callbacks", "logs", "blobs", "artifacts", "episode-memory", "case-memories", "operation-memory", "__pycache__", "analysis", "regression-analysis", "reports", "db-snapshot"}
 
 
@@ -36,6 +36,18 @@ def _integer(value):
     if isinstance(value, str) and re.fullmatch(r"[+-]?[0-9]+", value):
         return int(value)
     return None
+
+
+def _recorded_agent(manifest):
+    """Agent facts a run's own manifest recorded (``agent_backend`` block): kind, evidence client, native effort
+    (a short scalar-valued object compared as canonical JSON). Absent facts are omitted, so archives from before
+    backend selection record nothing and keep the configured/default reading."""
+    block = _object(manifest.get("agent_backend"))
+    result = _scalars(block, ("kind", "evidence_client"))
+    effort = _scalars(_object(block.get("native_effort")), ("effort", "variant", "model_reasoning_effort"))
+    if effort:
+        result["native_effort"] = canonical(effort)
+    return {("agent_backend" if key == "kind" else key): value for key, value in result.items() if isinstance(value, str) and value}
 
 
 def _identity(value):
@@ -102,7 +114,7 @@ class ExperimentGroups:
             raise ValueError("comparison_path_denied")
         return path
 
-    def _read(self, path, *, packaged=False, fields=None):
+    def _read(self, path, *, packaged=False, fields=None, project=None):
         path = Path(path) if packaged else self._path(path)
         if path.is_symlink():
             raise ValueError("comparison_path_denied")
@@ -111,13 +123,13 @@ class ExperimentGroups:
         except FileNotFoundError:
             return {}
         fingerprint = (info.st_size, info.st_mtime_ns)
-        cache_key = (path, fields)
+        cache_key = (path, fields, project)
         cached = self.cache.get(cache_key)
         if cached is None or cached[0] != fingerprint:
             if info.st_size > 16 * 1024 * 1024:
                 raise ValueError("comparison_metadata_too_large")
             value = read_json(path, {})
-            cached = (fingerprint, _scalars(value, fields) if fields else value)
+            cached = (fingerprint, project(value) if project else _scalars(value, fields) if fields else value)
             self.cache[cache_key] = cached
         return cached[1]
 
@@ -194,6 +206,7 @@ class ExperimentGroups:
             and {row["new_run_dir"] for row in recovery_selection} == {row.get("run_dir") for row in cases})
         by_path = {entry["path"]: entry for entry in catalog.entries.values()}
         groups = []
+        recorded_by_path = {}
         for condition, members in buckets.items():
             group_protocol = (protocols or {}).get(condition, protocol)
             override_protocol = condition in (protocols or {})
@@ -238,6 +251,7 @@ class ExperimentGroups:
                         attempt = _run(entry)
                         if attempt["id"] not in {run["id"] for run in row["attempts"]}:
                             row["attempts"].append(attempt)
+                            recorded_by_path[attempt["id"]] = self._read(run_path / "manifest.json", project=_recorded_agent)
                 except (KeyError, ValueError, TypeError):
                     row["warnings"].append("run_path_unavailable")
             for row in rows.values():
@@ -256,6 +270,8 @@ class ExperimentGroups:
             model = _object(config.get("model"))
             conditions = dict(model=_scalars(manifest, ("model",)).get("model", _scalars(model, ("name",)).get("name")),
                               reasoning_effort=_scalars(manifest, ("reasoning_effort",)).get("reasoning_effort", _scalars(model, ("effort",)).get("effort")))
+            # Archives written before backend selection have no agent section and ran on Codex.
+            conditions["agent_backend"] = _scalars(_object(config.get("agent")), ("backend",)).get("backend", "codex")
             conditions.update(_scalars(_object(config.get("features")), CONDITION_FIELDS))
             conditions.update(_scalars(model, ("native_memories",)))
             information = _object(manifest.get("information_conditions"))
@@ -268,6 +284,28 @@ class ExperimentGroups:
                     conditions[field] = next(iter(values.values()))
                 elif len(values) > 1:
                     conditions[field] = None
+            # Evidence helper path (design 9.6): a Codex arm on the default client uses the Codex evidence agent,
+            # every other arm the relay. Derived from the FINAL backend (a case may override the configured one)
+            # unless the manifest declared it explicitly.
+            if "evidence_client" not in conditions and not any("evidence_client" in case for case in members):
+                client = _object(_object(config.get("agent")).get("evidence")).get("client")
+                backend = conditions["agent_backend"]
+                conditions["evidence_client"] = None if backend is None else (
+                    "codex_agent" if backend == "codex" and client in (None, "native") else "relay")
+            # What the runs themselves recorded is the true provenance: a value shared by every recorded attempt
+            # replaces the configured reading, disagreeing attempts make the condition unknown (None), and runs
+            # without a record (archives from before backend selection) keep the configured/default reading.
+            recorded = [recorded_by_path[run["id"]] for row in rows.values() for run in row["attempts"] if run["id"] in recorded_by_path]
+            for field in ("agent_backend", "evidence_client", "native_effort"):
+                values = {entry[field] for entry in recorded if field in entry}
+                if len(values) > 1:
+                    conditions[field] = None
+                    warnings.append(f"recorded_{field}_differs_between_attempts")
+                elif values:
+                    value = next(iter(values))
+                    if conditions.get(field) not in (None, value) and field != "native_effort":
+                        warnings.append(f"recorded_{field}_differs_from_configured")
+                    conditions[field] = value
             groups.append(dict(id=group_id(relative, condition), label=f"{path.parent.name} · {condition}",
                 manifest=relative, condition=condition, benchmark_group=_scalars(manifest, ("benchmark_group",)).get("benchmark_group"),
                 method=_scalars(manifest, ("method",)).get("method"), comparison_scope=_scalars(manifest, ("comparison_scope",)).get("comparison_scope"),

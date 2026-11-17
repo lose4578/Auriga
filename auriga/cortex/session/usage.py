@@ -9,11 +9,70 @@ import re
 
 TOKEN_FIELDS = ("input_tokens", "cached_input_tokens", "cache_write_input_tokens",
                 "output_tokens", "reasoning_output_tokens", "total_tokens")
+# Counting-semantics strings recorded by different backends (Codex keeps its historical literal; changing it would
+# trip resume_model_budget_semantics_changed) map to ONE comparison basis for reports.
+COUNTING_EQUIVALENCE = {
+    "delivered_usable_actor_helper_compact_responses_v2": "all_delivered_usable_generation_completions",
+    "delivered_usable_generation_completions_v1": "all_delivered_usable_generation_completions",
+}
 RATE_FIELDS = ("uncached_input_per_million", "cached_input_per_million", "output_per_million")
 
 
 def counter(value):
     return value if type(value) is int and value >= 0 else None
+
+
+def counting_basis(counting):
+    """Comparison basis of a recorded counting-semantics string (``COUNTING_EQUIVALENCE``); an unknown string is its
+    own basis and a missing one is None, so strings that are not declared equivalent are never merged."""
+    if not isinstance(counting, str) or not counting:
+        return None
+    return COUNTING_EQUIVALENCE.get(counting, counting)
+
+
+class RelayUsageTotal:
+    """Sum of the normalised usage of every delivered completion seen by the relay (design 5.5), for any backend.
+
+    Each ``add`` takes one completion's counters (``TOKEN_FIELDS`` keys; ``None`` = the call did not report it). A
+    total counter becomes None, and stays None, as soon as one call lacks it: unknown is never zero. ``seed`` is a
+    previously stored ``runtime/model_usage_relay`` record of the SAME thread (resume); a seed of another thread is
+    ignored (``thread_id`` None accepts any seed).
+    """
+
+    def __init__(self, seed=None, thread_id=None):
+        if isinstance(seed, dict) and isinstance(seed.get("total"), dict) and thread_id in (None, seed.get("thread_id")):
+            self.total = {key: seed["total"].get(key) for key in TOKEN_FIELDS}
+            self.unknown_calls, self.calls = counter(seed.get("unknown_calls")) or 0, counter(seed.get("calls")) or 0
+        else:
+            self.total, self.unknown_calls, self.calls = {key: 0 for key in TOKEN_FIELDS}, 0, 0
+
+    def add(self, usage, *, model_context_window=None, thread_id=None, turn_id=None):
+        """Accumulate one completion; returns the ``runtime/token_usage``-shaped record
+        ``{total, last, model_context_window, thread_id, turn_id, raw_ref: None, unknown_calls, calls}``."""
+        usage = usage if isinstance(usage, dict) else {}
+        last = {key: counter(usage.get(key)) for key in TOKEN_FIELDS}
+        self.calls += 1
+        self.unknown_calls += any(value is None for value in last.values())
+        for key in TOKEN_FIELDS:
+            self.total[key] = None if self.total[key] is None or last[key] is None else self.total[key] + last[key]
+        return dict(total=dict(self.total), last=last, model_context_window=counter(model_context_window) or None,
+                    thread_id=thread_id, turn_id=turn_id, raw_ref=None, unknown_calls=self.unknown_calls, calls=self.calls)
+
+
+def responses_counters(usage):
+    """The ``TOKEN_FIELDS`` counters of one Responses ``usage`` object through ``account_responses_usage``' field
+    mapping (the Codex measurement the relay shares with every backend); absent counters stay None."""
+    tokens = account_responses_usage(usage)["tokens"]
+    return {key: tokens[key] for key in TOKEN_FIELDS}
+
+
+def add_served_model(served, model):
+    """``served`` (``{model: completed_calls}``) with one more delivered completion served by ``model``; a response
+    that did not name its model is counted under ``"unknown"``. Returns a new dict."""
+    key = model if isinstance(model, str) and model else "unknown"
+    result = dict(served or {})
+    result[key] = (counter(result.get(key)) or 0) + 1
+    return result
 
 
 def load_price_card(path):
@@ -56,8 +115,12 @@ def load_price_card(path):
     return {**card, "sha256": hashlib.sha256(raw).hexdigest()}
 
 
-def account_usage(usage, *, model=None, provider=None, price_card=None):
-    """Use ONE native cumulative snapshot; reasoning is a subset of output."""
+def account_usage(usage, *, model=None, provider=None, price_card=None, source="codex.thread/tokenUsage/updated.total"):
+    """Use ONE native cumulative snapshot; reasoning is a subset of output.
+
+    source: provenance label stored in the result (default: the Codex native snapshot literal;
+    relay-accumulated backends pass e.g. "relay.<wire>.usage.sum").
+    """
     usage = usage if isinstance(usage, dict) else {}
     total = usage.get("total") if isinstance(usage.get("total"), dict) else {}
     tokens = {key: counter(total.get(key)) for key in TOKEN_FIELDS}
@@ -124,7 +187,7 @@ def account_usage(usage, *, model=None, provider=None, price_card=None):
                         estimate.update(status="complete", reason=None, total=estimate["known_subtotal"])
                     else:
                         estimate.update(status="partial", reason="token_counter_missing")
-    return dict(schema_version="1", scope="thread_cumulative", source="codex.thread/tokenUsage/updated.total",
+    return dict(schema_version="1", scope="thread_cumulative", source=source,
                 thread_id=usage.get("thread_id"), turn_id=usage.get("turn_id"), raw_ref=usage.get("raw_ref"),
                 model=model, provider=provider, model_context_window=context_window, tokens=tokens,
                 cache_hit_rate=hit_rate, issues=issues, rate_card_estimate=estimate,

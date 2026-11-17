@@ -12,7 +12,7 @@ The tables below organize all documentation by topic. Development rules and arch
 | :--- | :--- |
 | [Running Guide](development/running.md) | Preparing the environment, starting interactive or benchmark runs, pausing/stopping, resuming sessions, replaying archives, and scheduling batch evaluations. |
 | [RoboDojo Environment Setup](development/robodojo-setup.md) | Pinned RoboDojo / IsaacLab commits, required compatibility patches, and how Auriga locates the isolated RoboDojo interpreter. |
-| [Configuration Guide](development/configuration.md) | Configuring models, machine paths, the OS sandbox, observation conditions, tool availability, and video recording. |
+| [Configuration Guide](development/configuration.md) | Configuring models, machine paths, the OS sandbox, observation conditions, tool availability, video recording, the agent backend and its [evidence helper client](development/configuration.md#evidence-helpers-agentevidence). |
 | [Experiment Library & Web Service](development/experiment-library.md) | Archiving, searching, live monitoring, side-by-side comparison, replay, and the optional `experiment-groups.json` registry format. |
 | [HD Offline Replay](development/hd-replay.md) | Re-simulating archived trajectories in RoboDojo and exporting high-definition videos without calling the model. |
 | [Experiment Completion Hook](development/experiment-completion-hook.md) | How the evaluation queue notifies callers when a batch finishes. |
@@ -29,12 +29,14 @@ The tables below organize all documentation by topic. Development rules and arch
 | [AGENTS.md](../AGENTS.md) | Essential reading for developers and coding agents: architectural boundaries, first principles, experiment discipline, and delivery checks. |
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | Environment setup, CPU/web/package checks, and pull request guidelines. |
 | [Implementation Architecture](development/architecture.md) | Six-layer package structure, call paths, state ownership, and module dependency rules. |
+| [Agent Backends](development/agent-backends.md) | The swappable agent runtime (Codex / Claude Code / OpenCode): `AgentSession` contract, MCP tool transport, relay wire adapters, native capability policy per backend, comparison protocol for harness experiments, and known limitations; [prompt parity](development/reports/agent-backend-prompt-parity.md) and [spike findings](development/reports/agent-backend-spikes.md). |
+| [Claude Code backport validation](development/reports/auriga-claude-backport.md) | Source commits, Auriga compatibility scope, CPU/Web/package results and environment limitations. |
 | [Extension Guide](development/extensions.md) | Choosing the right extension layer: operation memory, task notes, plugins, tools, or robot backends. |
 | [Tool Contracts & Plugins](development/tool-plugins.md) | Declaring schemas, roles/effects, narrow `ToolContext` access, typed receipts, and dual actor/program regressions. |
 | [Tool Output Contract](development/tool-output-contract.md) & [Cost Summary & Input Diagnostics](development/tool-input-output.md) | Structured tool responses, on-demand `help` requests, preview cost summaries, and actionable validation errors. |
 | [Robot & Environment Integration](development/robot-environment-integration.md) | Onboarding a new manipulator or simulator/real-world environment and validating supported combinations. |
 | [Robot Backend Boundaries](development/robot-backend-boundaries.md) | Separating pure validation, trajectory compilation, IPC transport, and native worker execution. |
-| [Validation & Release Guide](development/validation.md) | Selecting test suites by change scope, distinguishing software checks from native task evidence, and cutting releases. |
+| [Validation & Release Guide](development/validation.md) | Selecting test suites by change scope, host-capability gating of sandbox tests, distinguishing software checks from native task evidence, and cutting releases. |
 | [Changelog](../CHANGELOG.md) | Version-by-version release notes and compatibility history. |
 
 ---

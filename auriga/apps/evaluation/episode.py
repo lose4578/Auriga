@@ -15,6 +15,7 @@ from ...cortex.supervision.completion_guidance import COMPLETION_GUIDANCE_TRIGGE
 from ...runtime.supervision import model_budget_exhausted, wait_turn
 from ..library.scoring import classify_episode_result
 from ...cortex.session.usage import account_usage
+from ...cortex.agents.base import session_backend_kind
 
 BENCHMARK_CONTINUATION = "任务还没完成，请继续。"
 
@@ -167,6 +168,8 @@ def episode_summary(store, identity, session, harness, *, benchmark, final_statu
               "failed_actions": sum(value.get("status") == "failed" for value in receipts),
               "task_success": None, "normalized_score": None, "thread_id": session.thread_id,
               "codex_turn_status": (session.turn_result or {}).get("status"),
+              "agent_turn_status": (session.turn_result or {}).get("status"),
+              "agent_backend": session_backend_kind(session),
               "token_usage": store.read_state("runtime", "token_usage"),
               "token_accounting": account_usage(store.read_state("runtime", "token_usage"),
                   model=session.model, provider=session.provider, price_card=session.price_card),
@@ -179,6 +182,10 @@ def episode_summary(store, identity, session, harness, *, benchmark, final_statu
               "actor_stall": getattr(harness, "actor_stall", None),
               "native_episode": store.read_state("runtime", "native_episode"),
               "model_requests": store.read_state("runtime", "model_requests"),
+              # Provider-reported served model per delivered completion, and the relay-measured usage every backend
+              # shares (None = not recorded); configured vs served and native vs relay usage are compared, not equated.
+              "served_models": (store.read_state("runtime", "model_requests") or {}).get("served_models"),
+              "model_usage_relay": store.read_state("runtime", "model_usage_relay"),
               "model_budget_exhausted": model_budget_exhausted(session),
               "visual_review_usage": [dict(model=value["model"], usage=value.get("usage")) for value in reviews],
               "token_accounting_scope": "main_actor_only; auxiliary visual model usage recorded separately",

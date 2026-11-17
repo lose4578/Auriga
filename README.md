@@ -20,7 +20,7 @@
 
 ---
 
-**Auriga** is an agent harness for embodied robot manipulation. A model runs in a persistent Codex session, looks at camera images and robot state, plans, calls tools, writes and reviews small helper programs, and moves a robot—while the harness owns the execution boundary, the run state, and the evidence record. The default environment is the [RoboDojo](https://robodojo-benchmark.com/) simulation benchmark with a dual-arm **ARX X5**.
+**Auriga** is an agent harness for embodied robot manipulation. A model runs in a persistent agent session—Codex (default), Claude Code, or OpenCode—looks at camera images and robot state, plans, calls tools, writes and reviews small helper programs, and moves a robot—while the harness owns the execution boundary, the run state, and the evidence record. The default environment is the [RoboDojo](https://robodojo-benchmark.com/) simulation benchmark with a dual-arm **ARX X5**.
 
 Instead of hardcoding task-specific scripts or handing control to an open-loop policy, Auriga keeps **the model in the lead** and treats tools as scene-neutral instruments:
 - **Deliberate before moving**: The model localizes objects in 3D via calibrated multi-view geometry and previews multi-stage dual-arm trajectories while the world is paused.
@@ -63,7 +63,7 @@ Mean Score (0–100) and Success Rate (SR) on the 42-task [RoboDojo](https://rob
 
 ## Tools
 
-Ten core tools are visible upfront; the rest load on demand through native Codex tool search. Each tool declares its input/output schema, physical units (`m`, `rad`, `deg`, `s`), defaults, and bounds in [`auriga/runtime/tools/definitions.py`](auriga/runtime/tools/definitions.py).
+On Codex, ten core tools are visible upfront and the rest load on demand through native tool search; Claude Code and OpenCode publish the full catalog eagerly. Each tool declares its input/output schema, physical units (`m`, `rad`, `deg`, `s`), defaults, and bounds in [`auriga/runtime/tools/definitions.py`](auriga/runtime/tools/definitions.py).
 
 | Tool | Purpose |
 | :--- | :--- |
@@ -148,6 +148,25 @@ mamba run -n Auriga python -m auriga.apps.gateway --print-config
 
 See the [Configuration Guide](docs/development/configuration.md) and the [annotated example](configs/auriga.example.json) for all fields.
 
+### Choosing the agent runtime
+
+Auriga drives the actor through a swappable agent runtime. `agent.backend` (or `--agent-backend` for one run) selects it: `codex` (default, `~/.codex`, Responses wire), `claude_code`, or `opencode`.
+
+- **Claude Code**: `mamba run -n Auriga python -m pip install -e '.[claude]' -c requirements-claude.lock.txt` (pins `claude-agent-sdk==0.2.180`, which bundles Claude Code CLI `2.1.321`). Put the endpoint and key in `configs/claude.local.json` in the official Claude Code format (`{"env": {"ANTHROPIC_BASE_URL": ..., "ANTHROPIC_AUTH_TOKEN": ...}}`) and select it with `agent.claude_code.upstream = {"source": "claude_settings", "settings": "claude.local.json"}` in `configs/auriga.local.json` (other `env` entries, such as provider switches, are forwarded to the CLI; see [Agent Backends](docs/development/agent-backends.md#configuration-per-backend)); or use an explicit `anthropic_messages` endpoint (`base_url`, `api_key_env`).
+- **OpenCode**: `npm i --prefix <install-dir> --save-exact opencode-ai@1.19.5`, then point `agent.opencode.executable` at the installed platform binary (absolute path, not the Node wrapper). Requires `ripgrep` (`rg`) on `PATH`. Set `agent.opencode.upstream` to a relay-served wire (`anthropic_messages` or `openai_responses`).
+
+Upstream credentials are configured by environment variable **name**, never by value: `agent.<backend>.upstream.api_key_env` names the variable (e.g. `ANTHROPIC_API_KEY`) that the gateway process reads at launch; the agent process itself only ever sees a local placeholder key and the run's own relay/MCP endpoints.
+
+For Claude Code, supply a model served by your Anthropic-compatible provider (the existing default remains a Codex model):
+
+```bash
+mamba run -n Auriga python -u -m auriga.apps.gateway \
+  --agent-backend claude_code --model <provider-model-id> --effort high \
+  --gpu 0 --port 8767 --run-dir runs/claude-first-task
+```
+
+See the [Agent Backends guide](docs/development/agent-backends.md) for the architecture, per-backend configuration, native capability policy, and the comparison protocol for harness experiments across backends.
+
 ---
 
 ## Quick Start
@@ -162,7 +181,7 @@ mamba run -n Auriga python -u -m auriga.apps.gateway \
   --gpu 0 --port 8767 --run-dir runs/my-first-task
 ```
 
-Open **<http://127.0.0.1:8767>** to watch the cameras, native Codex terminal, action previews, and run record.
+Open **<http://127.0.0.1:8767>** to watch the cameras, the native agent terminal (when the selected backend supports one), action previews, and run record.
 
 ### 2. Replay, Browse & Render
 
@@ -189,7 +208,7 @@ See the [Running Guide](docs/development/running.md) for session resume, interac
 
 ## Security
 
-Generated code runs as your OS user by default (`features.sandbox_enabled=false`): native Codex commands, sub-agents, and `program_run` have your user's file and network access, and only the harness's application-level boundaries apply (observation filtering, action admission, program review).
+Generated code runs as your OS user by default (`features.sandbox_enabled=false`): native agent commands, sub-agents, and `program_run` have your user's file and network access, and only the harness's application-level boundaries apply (observation filtering, action admission, program review).
 
 On Linux hosts with `bubblewrap`, Landlock ABI ≥ 4, and `libseccomp`, you can enable OS isolation with `{"version": 1, "features": {"sandbox_enabled": true}}`; startup fails explicitly instead of downgrading when isolation is unavailable. See [Code Execution Sandbox](docs/development/configuration.md#code-execution-sandbox). Keep credentials in `~/.codex`, never in the repository.
 
@@ -202,7 +221,7 @@ auriga/        Python package, six layers; module imports only point downward
   core/          contracts, configuration, information boundary, storage, model-facing presentation
   robot/         robot model and calibration, motion contracts and planners, RoboDojo backend
   perception/    image measurement, overlays, optional external perception, RGB-D, scene store
-  cortex/        Codex session and sandbox, actor startup context, turn supervision
+  cortex/        agent session backends (Codex / Claude Code / OpenCode) and sandbox, actor startup context, turn supervision
   runtime/       Harness, robot_action orchestration, tool registry and plugins, programs, policy bridge
   apps/          gateway/workbench, experiment library, evaluation queue, HD replay, reference baseline
 web/           workbench and experiment-library frontend (built into the package)
@@ -216,7 +235,7 @@ third_party/   pinned third-party material with licenses (Codex model catalog, R
 docs/          development guides, design documents, and perception notes
 ```
 
-**Code tour**: [`auriga/apps/gateway/cli.py`](auriga/apps/gateway/cli.py) builds a [`Workbench`](auriga/apps/gateway/workbench.py), which starts the Codex session ([`auriga/cortex/session/codex.py`](auriga/cortex/session/codex.py)) and the [`Harness`](auriga/runtime/harness.py). Tools are declared in [`auriga/runtime/tools/definitions.py`](auriga/runtime/tools/definitions.py) and assembled in [`auriga/runtime/tools/builtins.py`](auriga/runtime/tools/builtins.py); `robot_action` lives in [`auriga/runtime/actions/unified_actions.py`](auriga/runtime/actions/unified_actions.py). Physical execution goes from [`Harness.execute`](auriga/runtime/harness.py) over [`auriga/robot/backends/robodojo/robot_process.py`](auriga/robot/backends/robodojo/robot_process.py) to [`auriga/robot/backends/robodojo/robot_worker.py`](auriga/robot/backends/robodojo/robot_worker.py) inside the RoboDojo interpreter.
+**Code tour**: [`auriga/apps/gateway/cli.py`](auriga/apps/gateway/cli.py) builds a [`Workbench`](auriga/apps/gateway/workbench.py), which starts the configured agent session (`agent.backend`; [`auriga/cortex/agents/factory.py`](auriga/cortex/agents/factory.py) selects `CodexSession` in [`auriga/cortex/session/codex.py`](auriga/cortex/session/codex.py), `ClaudeCodeSession`, or `OpenCodeSession`) and the [`Harness`](auriga/runtime/harness.py). Tools are declared in [`auriga/runtime/tools/definitions.py`](auriga/runtime/tools/definitions.py) and assembled in [`auriga/runtime/tools/builtins.py`](auriga/runtime/tools/builtins.py); `robot_action` lives in [`auriga/runtime/actions/unified_actions.py`](auriga/runtime/actions/unified_actions.py). Physical execution goes from [`Harness.execute`](auriga/runtime/harness.py) over [`auriga/robot/backends/robodojo/robot_process.py`](auriga/robot/backends/robodojo/robot_process.py) to [`auriga/robot/backends/robodojo/robot_worker.py`](auriga/robot/backends/robodojo/robot_worker.py) inside the RoboDojo interpreter. See the [Agent Backends guide](docs/development/agent-backends.md) for how Claude Code and OpenCode fit the same contract.
 
 ---
 

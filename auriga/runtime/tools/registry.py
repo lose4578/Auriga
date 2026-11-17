@@ -69,6 +69,13 @@ class ToolSpec:
     # Each discriminator owns a JSON Schema for ToolResponse.data. A mapping
     # keeps multi-result tools explicit without coupling them to request modes.
     output_schemas: dict | None = None
+    # Concurrency contract for agent tool transports: True means a call is safe
+    # to run concurrently with other parallel-safe calls because it mutates no
+    # Harness/world state (e.g. no fresh capture, plan/memory write or motion).
+    # A callable receives the call's argument object and returns that verdict per
+    # request. Default False: the call runs in arrival order behind every
+    # earlier call. This is scheduling only; it never changes what a tool does.
+    parallel: bool | Callable[[dict], bool] = False
 
     @property
     def name(self):
@@ -76,6 +83,10 @@ class ToolSpec:
 
     def effect_for(self, arguments):
         return self.effect(arguments) if callable(self.effect) else self.effect
+
+    def parallel_for(self, arguments):
+        """Return whether this call may overlap other parallel-safe calls."""
+        return bool(self.parallel(arguments)) if callable(self.parallel) else self.parallel
 
 
 class ToolRegistry:
@@ -109,6 +120,8 @@ class ToolRegistry:
         spec = _copy_spec(spec)
         if not isinstance(spec.api_version, str) or re.fullmatch(r'[1-9][0-9]*\.[0-9]+', spec.api_version) is None:
             raise ValueError('invalid_tool_api_version')
+        if type(spec.parallel) is not bool and not callable(spec.parallel):
+            raise ValueError('invalid_tool_parallel:' + spec.name)
         if spec.name.startswith('scene_') and spec.roles & {'actor', 'program'}:
             raise ValueError('reserved_tool_namespace:scene_')
         if spec.name in self.__specs:
@@ -135,6 +148,24 @@ class ToolRegistry:
     @property
     def names(self):
         return frozenset(self.__specs)
+
+    def parallel_safe(self, name, arguments):
+        """Classify one agent tool call for concurrent dispatch.
+
+        True only when ``name`` is a registered tool whose ``ToolSpec.parallel``
+        contract allows this ``arguments`` object to run concurrently with other
+        parallel-safe calls. An unknown tool, a non-object argument value or a
+        failing request-dependent classifier yields False, so the call is ordered
+        (the safe direction). Role and availability are still enforced by
+        ``validate``/``invoke`` when the call executes.
+        """
+        spec = self.__specs.get(name) if isinstance(name, str) else None
+        if spec is None or not isinstance(arguments, dict):
+            return False
+        try:
+            return spec.parallel_for(arguments) is True
+        except Exception:
+            return False
 
     def spec(self, name, *, role):
         spec = self.__specs.get(name) if isinstance(name, str) else None
@@ -220,5 +251,6 @@ class ToolRegistry:
             output_schema_hash=digest(spec.output_schemas) if spec.output_schemas is not None else None,
             output_contract='typed_data' if spec.output_schemas is not None else 'trusted_legacy_wire_unvalidated',
             effect=spec.effect if isinstance(spec.effect, str) else 'request_dependent',
+            parallel=spec.parallel if isinstance(spec.parallel, bool) else 'request_dependent',
             available=(reason := self.unavailable(spec, runtime, {})) is None,
             unavailable_reason=reason) for spec in self.__specs.values() if role in spec.roles])

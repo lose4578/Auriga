@@ -5,11 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "auriga-harness"
 version = "0.2.0"
-description = "Agent harness for embodied manipulation: a model-led Codex session with one robot execution gateway"
+description = "Agent harness for embodied manipulation: a model-led agent session with one robot execution gateway"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = ["aiohttp==3.13.2", "openai-codex==0.160.0", "numpy==2.5.3", "scipy==1.18.1", "opencv-python-headless==5.0.0.93", "jsonschema==4.26.0", "Pillow==12.1.1"]
+
+[project.optional-dependencies]
+claude = ["claude-agent-sdk==0.2.180"]
 
 [project.scripts]
 auriga = "auriga.apps.gateway.cli:main"
@@ -29,3 +32,4 @@ auriga = ["web_assets/*", "reference_sources/**/*"]
 "auriga.apps.library" = ["experiment_group_relations.json"]
 "auriga.robot.model" = ["robot_information_data/*/*.json", "robot_information_data/*/*.txt", "robot_information_data/*/*.png", "robot_information_data/*/*.zip", "robot_information_data/*/cad/*.STEP"]
 "auriga.runtime.policy.policy_workers" = ["*.json"]
+"auriga.cortex.agents.opencode" = ["opencode_routes.json"]

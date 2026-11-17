@@ -16,6 +16,7 @@ auriga/reference_sources/
 
 # Machine-local configuration and credentials
 /configs/auriga.local.json
+/configs/claude.local.json
 # Private companion checkout with internal records, cloned separately.
 /lab/
 .env

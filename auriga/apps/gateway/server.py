@@ -17,12 +17,20 @@ from ..library.scoring import classify_episode_result
 from ...runtime.supervision import INACTIVITY_REASON, model_budget_exhausted, robot_gpu_oom, start_with_shutdown, wait_turn
 from ..evaluation.episode import wait_benchmark, episode_summary
 from ...core.config import Config
+from ...cortex.agents.base import session_backend_kind
+from ...cortex.agents.factory import backend_requirements
 from .workbench import DEFAULT_PROMPT, Workbench, _UNSET
 
 
 async def serve(args):
     if (args.resume or args.replay) and not args.run_dir:
         raise ValueError("resume_and_replay_require_run_dir")
+    resolved = getattr(args, "resolved_config", None)
+    if resolved is not None and not args.replay and not args.resume:
+        # Refuse an agent backend that cannot run this configuration before a run directory is registered. A resumed
+        # run is gated by Workbench against its ARCHIVED configuration (manifest effective_config), which is what
+        # the resumed session runs; the invocation's own configuration does not describe it.
+        backend_requirements(resolved)
     card_path = getattr(args, "price_card", None)
     price_card = load_price_card(card_path) if card_path and not (args.resume or args.replay) else None
     root = Path(args.run_dir).expanduser().resolve() if args.run_dir else allocate_run(
@@ -127,17 +135,21 @@ async def serve(args):
                 try:
                     if not args.replay:
                         native_turn = workbench.session.turn_result or {}
+                        # Codex keeps its historical names; other agent backends use the neutral ones.
+                        codex_backend = session_backend_kind(workbench.session) == "codex"
                         if native_turn.get("status") == "failed":
                             expected_limit_stop = model_budget_exhausted(workbench.session)
                             if expected_limit_stop:
                                 workbench.harness.wait_stop_reason = "model_request_limit"
-                                workbench.store.event("codex.expected_budget_stop", {"turn_error":native_turn.get("error")})
+                                workbench.store.event("codex.expected_budget_stop" if codex_backend
+                                                      else "agent.expected_budget_stop", {"turn_error":native_turn.get("error")})
                             elif final_status != "unknown" and not getattr(workbench.harness, "episode_terminal", None):
                                 final_status = "failed"
                             if infrastructure_error is None and not expected_limit_stop:
                                 error = native_turn.get("error") or {}
                                 detail = error.get("message") if isinstance(error, dict) else str(error)
-                                infrastructure_error = "codex_turn_failed: " + str(detail or canonical(error))[:4096]
+                                infrastructure_error = (("codex_turn_failed: " if codex_backend else "agent_turn_failed: ")
+                                                        + str(detail or canonical(error))[:4096])
                         if workbench.current_unknown_actions() or workbench.harness.active_action or workbench.has_active_programs():
                             final_status = "unknown"
                         result_summary = episode_summary(workbench.store, workbench.identity,

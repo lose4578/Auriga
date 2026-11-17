@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from auriga.runtime.programs.isolation import CREATE_RULESET, restrict
+from support.host_capabilities import landlock, require
 
 
 class IsolationCheck(unittest.TestCase):
@@ -46,6 +47,7 @@ class IsolationCheck(unittest.TestCase):
                 restrict([], [], tcp_ports=[])
         libc.syscall.assert_called_once_with(CREATE_RULESET, 0, 0, 1)
 
+    @require(landlock, "the program launcher denies reads through a real Landlock ruleset")
     def test_children_cannot_read_hidden_files(self):
         with tempfile.TemporaryDirectory() as root:
             root = Path(root)

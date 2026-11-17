@@ -12,6 +12,7 @@ from unittest import mock
 
 from scripts import benchmark_queue as queue
 from scripts import queue_retry
+from support.host_capabilities import linux_proc, require
 
 
 def observation(utilization=0, free=30000, index=0, uuid="GPU-a"):
@@ -419,6 +420,7 @@ sys.exit(code)
             self.assertIsNotNone(replacement)
             replacement.close()
 
+    @require(linux_proc, "binds processes by /proc/<pid>/stat start ticks")
     def test_memory_attribution_and_utilization_limit_are_cross_queue_and_temporary(self):
         gpu = observation(free=500000)["gpus"][0]
         leases = []
@@ -696,6 +698,7 @@ if lease: lease.close()
         # Experimental conditions stay frozen; state/events are the effective schedule.
         self.assertEqual(json.loads((output / "effective_config.json").read_text())["queue"]["max_parallel"], 1)
 
+    @require(linux_proc, "binds processes by /proc/<pid>/stat start ticks")
     def test_set_max_parallel_cli_requires_live_supported_queue_without_loading_config(self):
         output = self.root / "set-control"
         output.mkdir()
@@ -1195,6 +1198,7 @@ if lease: lease.close()
         self.assertIsNone(reservation)
         self.assertEqual(decision["reason"], "insufficient_unreserved_memory")
 
+    @require(linux_proc, "binds processes by /proc/<pid>/stat start ticks")
     def test_pidfd_cleanup_covers_detached_descendants_and_leaves_other_jobs_alive(self):
         # Owned CPU-only fixtures; no model, simulator, GPU, or process-group kill.
         child_code = "import signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); time.sleep(30)"

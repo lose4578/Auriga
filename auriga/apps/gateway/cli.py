@@ -14,13 +14,15 @@ from .workbench import _configured_tool_specs
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run Astra + RoboDojo with a persistent native Codex workbench", argument_default=argparse.SUPPRESS)
+    parser = argparse.ArgumentParser(description="Run Astra + RoboDojo with a persistent native agent workbench", argument_default=argparse.SUPPRESS)
     parser.add_argument('--config', help='Unified JSON config; defaults to AURIGA_CONFIG or configs/auriga.json')
     parser.add_argument('--print-config', action='store_true', help='Print resolved configuration and exit without starting services')
     parser.add_argument('--model', help='Actor model name')
     parser.add_argument('--image-feedback-policy', choices=('all', 'adaptive'),
                         help='Automatic action camera delivery; explicit observations retain all requested views')
     parser.add_argument('--effort', help='Actor reasoning effort')
+    parser.add_argument('--agent-backend', choices=('codex', 'claude_code', 'opencode'),
+                        help='Override agent.backend: the agent runtime that drives the actor (default codex); other agent.* settings are config-file only')
     parser.add_argument('--codex-home', help='Source Codex configuration/auth directory (credentials are never embedded)')
     parser.add_argument('--grasp-memory-dir', help='Persistent reviewed grasp memory directory')
     parser.add_argument('--disabled-tools', nargs='*', help='Tool names blocked in both the model interface and program dispatch; empty clears config list')

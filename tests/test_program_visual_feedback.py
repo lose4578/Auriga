@@ -13,6 +13,7 @@ from PIL import Image
 from auriga.runtime.programs.runner import ProgramRunner
 from auriga.core.tool_output import ToolOutput
 import test_dual_arm_interface as harness_fixture
+from support.host_capabilities import program_isolation, require
 
 
 class ProgramVisualFeedbackTests(unittest.TestCase):
@@ -194,6 +195,7 @@ class ProgramVisualFeedbackTests(unittest.TestCase):
             self.assertEqual(started.result(timeout=5)['status'], 'succeeded')
         self.assertEqual(self.robot.executions, 0)
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_python_environment_initializes_without_reading_run_private_parent(self):
         self.h.config = self.h.config.with_overrides({'features': {'sandbox_enabled': True}})
         self.h.programs.close()

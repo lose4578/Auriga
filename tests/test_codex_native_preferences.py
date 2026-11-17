@@ -17,6 +17,7 @@ from openai_codex.generated.v2_all import ConfigReadResponse, ExperimentalFeatur
 from auriga.cortex.session.codex import CodexSession, MODEL_PROXY_PROVIDER, CODEX_PROTOCOL_VERSION
 from auriga.core.config import Config
 from auriga.core.storage.store import Store
+from support.host_capabilities import bubblewrap_namespaces, require
 
 
 class CodexNativePreferencesTest(unittest.TestCase):
@@ -82,6 +83,7 @@ class CodexNativePreferencesTest(unittest.TestCase):
             self.assertIs(config["features"][feature], False, feature)
         self.assertEqual(config["features"]["context_management"], {"experimental_mode": True})
 
+    @require(bubblewrap_namespaces, "starts the native Codex actor inside its bubblewrap namespace sandbox")
     def test_fixed_preferences_ignore_local_values_and_preserve_actor_configuration(self):
         original = self.source_config.read_bytes()
         self.session._prepare()
@@ -118,6 +120,7 @@ class CodexNativePreferencesTest(unittest.TestCase):
             self.assertEqual(next(line.split()[-1] for line in result.stdout.splitlines()
                                   if line.startswith(feature + " ")), "false")
 
+    @require(bubblewrap_namespaces, "starts the native Codex actor inside its bubblewrap namespace sandbox")
     def test_host_extensions_credentials_and_environment_are_not_copied(self):
         credentials = self.source / '.credentials.json'
         credentials.write_text('{"fixture-mcp": {"access_token": "synthetic-only"}}')
@@ -169,6 +172,7 @@ class CodexNativePreferencesTest(unittest.TestCase):
         self.assertIn('codex_models.json', tomllib.loads((root / 'pyproject.toml').read_text())
                       ['tool']['setuptools']['package-data']['auriga.cortex.session'])
 
+    @require(bubblewrap_namespaces, "starts the native Codex actor inside its bubblewrap namespace sandbox")
     def test_fixed_preferences_also_apply_when_source_omits_them_or_run_is_resumed(self):
         self.source_config.write_text('model_provider = "fixture"\n'
             '[model_providers.fixture]\nbase_url = "https://fixture.invalid/v1"\n')
@@ -177,6 +181,7 @@ class CodexNativePreferencesTest(unittest.TestCase):
         self.session._prepare((self.session.model, "fixture"))
         self.assert_fixed_preferences(self.generated())
 
+    @require(bubblewrap_namespaces, "starts the native Codex actor inside its bubblewrap namespace sandbox")
     def test_native_memories_can_be_disabled_in_private_run_without_changing_host(self):
         original = self.source_config.read_bytes()
         self.session.config = self.session.config.with_overrides({'model': {'native_memories': False}})
@@ -189,6 +194,7 @@ class CodexNativePreferencesTest(unittest.TestCase):
         self.session._prepare((self.session.model, "fixture"))
         self.assertFalse(self.generated()['features']['memories'])
 
+    @require(bubblewrap_namespaces, "starts the native Codex actor inside its bubblewrap namespace sandbox")
     def test_external_model_and_effort_reach_native_config_and_turn(self):
         for model, effort in [("gpt-6.1-sol", "xhigh"), ("gpt-6-luna", "low")]:
             with self.subTest(model=model, effort=effort):
@@ -209,6 +215,7 @@ class CodexNativePreferencesTest(unittest.TestCase):
                     [{"type": "text", "text": "fixture prompt"}], {"model": model, "effort": effort})
                 session.client = None
 
+    @require(bubblewrap_namespaces, "starts the native Codex actor inside its bubblewrap namespace sandbox")
     def test_real_app_server_initializes_thread_with_requested_features(self):
         # Use real runtime/relays, a closed localhost fixture upstream, and no turns.
         # This catches feature startup failures that `features list` cannot detect.
@@ -250,6 +257,7 @@ class CodexNativePreferencesTest(unittest.TestCase):
 
 
 class CodexNativeMemoryProtocolTest(unittest.TestCase):
+    @require(bubblewrap_namespaces, "starts the native Codex actor inside its bubblewrap namespace sandbox")
     def test_native_shell_and_memory_consolidation_execute_in_private_fixture(self):
         self._check_native_shell_and_memory(sandbox_enabled=True)
 

@@ -1,0 +1,524 @@
+{
+ "capture": "spike S6 /event frames of a provider stream error (Anthropic overloaded_error, retried 5 times then UnknownError), anthropic_messages wire, opencode 1.19.5; message/session-status frames only",
+ "sanitised": [
+  "run paths -> /runs/<scenario>",
+  "loopback ports -> 127.0.0.1:0",
+  "image data URLs -> 1-pixel placeholder",
+  "response date/server headers dropped",
+  "3 KiB filler tool outputs trimmed",
+  "bash `env` output replaced by a neutral line"
+ ],
+ "evidence": [
+  "scratch/s-c/evidence/s6-retry-anthropic-b/events.json"
+ ],
+ "sessions": {
+  "stream_error": {
+   "session_id": "ses_e391365eaffeI8aboyLfuky2xc",
+   "events": [
+    {
+     "id": "evt_1c6ec9a3c001e1pIVEpdSY6y4O",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "info": {
+       "id": "msg_1c6ec9a38001FdL5CagIS7rVF5",
+       "role": "user",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "time": {
+        "created": 1794338757176
+       },
+       "agent": "build",
+       "model": {
+        "providerID": "relay",
+        "modelID": "claude-sonnet-4-5"
+       }
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ec9a3d001M47cVpI51w0DPe",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "part": {
+       "type": "text",
+       "text": "scenario stream_error",
+       "messageID": "msg_1c6ec9a38001FdL5CagIS7rVF5",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "id": "prt_1c6ec9a3c0012cymMehdLjjWHo"
+      },
+      "time": 1794338757181
+     }
+    },
+    {
+     "id": "evt_1c6ec9a41001ejY6BGEaDvo005",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ec9c5c00194X4w34wj4SoHi",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "info": {
+       "id": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ",
+       "parentID": "msg_1c6ec9a38001FdL5CagIS7rVF5",
+       "role": "assistant",
+       "mode": "build",
+       "agent": "build",
+       "path": {
+        "cwd": "/runs/s6retry-anthropic-b/actor",
+        "root": "/"
+       },
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "modelID": "claude-sonnet-4-5",
+       "providerID": "relay",
+       "time": {
+        "created": 1794338757724
+       },
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6eca182001MMM0GYBtTIB6Mc",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6eca1a7001nbllYHOPJI7q15",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "part": {
+       "id": "prt_1c6eca1a7001j98800mIuOQQjz",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "type": "step-start"
+      },
+      "time": 1794338759079
+     }
+    },
+    {
+     "id": "evt_1c6eca1a9001VaoDi40OGC1IP0",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "part": {
+       "id": "prt_1c6eca1a9001FwUqFjbj54edaj",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "type": "text",
+       "text": "",
+       "time": {
+        "start": 1794338759081
+       }
+      },
+      "time": 1794338759081
+     }
+    },
+    {
+     "id": "evt_1c6eca1ab0011ibeF92WmDWzqj",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "status": {
+       "type": "retry",
+       "attempt": 1,
+       "message": "{\"type\":\"overloaded_error\",\"message\":\"mid stream failure\"}",
+       "next": 1794338761474
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecab04001Z9QH8yAHJUnNNg",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecab08001BBiuLV7muxnimq",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "part": {
+       "id": "prt_1c6ecab08001tU30oItZFvzegZ",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "type": "step-start"
+      },
+      "time": 1794338761480
+     }
+    },
+    {
+     "id": "evt_1c6ecab090012GaFOf89K62pUB",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "part": {
+       "id": "prt_1c6ecab090016xx1fy8pPMeUV0",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "type": "text",
+       "text": "",
+       "time": {
+        "start": 1794338761481
+       }
+      },
+      "time": 1794338761481
+     }
+    },
+    {
+     "id": "evt_1c6ecab0a0014Ornx1BknYLI3N",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "status": {
+       "type": "retry",
+       "attempt": 2,
+       "message": "{\"type\":\"overloaded_error\",\"message\":\"mid stream failure\"}",
+       "next": 1794338765597
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecbb1e001B24JoT6kMGkzvm",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ecbb22001YNn9HY09wezDK0",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "part": {
+       "id": "prt_1c6ecbb220015vQrcJKjg9HViI",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "type": "step-start"
+      },
+      "time": 1794338765602
+     }
+    },
+    {
+     "id": "evt_1c6ecbb250018GHaVYojvISYwt",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "part": {
+       "id": "prt_1c6ecbb25001UrVWBrO77gdqZC",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "type": "text",
+       "text": "",
+       "time": {
+        "start": 1794338765605
+       }
+      },
+      "time": 1794338765605
+     }
+    },
+    {
+     "id": "evt_1c6ecbb26001IKhb37W3wOwSN4",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "status": {
+       "type": "retry",
+       "attempt": 3,
+       "message": "{\"type\":\"overloaded_error\",\"message\":\"mid stream failure\"}",
+       "next": 1794338775391
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ece161001HWXjVfb00UXOZR",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ece166001lGryNLiN11fC7v",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "part": {
+       "id": "prt_1c6ece166001oR2p7oJmfmT3xE",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "type": "step-start"
+      },
+      "time": 1794338775398
+     }
+    },
+    {
+     "id": "evt_1c6ece168001JGR6DSo5rZvOlS",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "part": {
+       "id": "prt_1c6ece168001GWtRLeGDa1klbz",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "type": "text",
+       "text": "",
+       "time": {
+        "start": 1794338775400
+       }
+      },
+      "time": 1794338775400
+     }
+    },
+    {
+     "id": "evt_1c6ece169001DaWN1TiLdSx50o",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "status": {
+       "type": "retry",
+       "attempt": 4,
+       "message": "{\"type\":\"overloaded_error\",\"message\":\"mid stream failure\"}",
+       "next": 1794338795383
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ed2f79001epWcjpVWv40HUx",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6ed2f82001dasQh35n7e09bL",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "part": {
+       "id": "prt_1c6ed2f82001ZnmBb58REsxnzn",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "type": "step-start"
+      },
+      "time": 1794338795394
+     }
+    },
+    {
+     "id": "evt_1c6ed2f87001TDkaQ0sTuDSEur",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "part": {
+       "id": "prt_1c6ed2f860014kal3LVnUfdWEd",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "type": "text",
+       "text": "",
+       "time": {
+        "start": 1794338795398
+       }
+      },
+      "time": 1794338795399
+     }
+    },
+    {
+     "id": "evt_1c6ed2f88001teRRhGD3D8roc1",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "status": {
+       "type": "retry",
+       "attempt": 5,
+       "message": "{\"type\":\"overloaded_error\",\"message\":\"mid stream failure\"}",
+       "next": 1794338825400
+      }
+     }
+    },
+    {
+     "id": "evt_1c6eda4ba0019RW9Zwp6NJmRaB",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "status": {
+       "type": "busy"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6eda4bf001c20jxqzezrxFIn",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "part": {
+       "id": "prt_1c6eda4bf001USRL93oKX74vFh",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "type": "step-start"
+      },
+      "time": 1794338825407
+     }
+    },
+    {
+     "id": "evt_1c6eda4c1001jF2zlAQnzXhWbJ",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "part": {
+       "id": "prt_1c6eda4c1001omSqXXdN0GKmqc",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "type": "text",
+       "text": "",
+       "time": {
+        "start": 1794338825409
+       }
+      },
+      "time": 1794338825409
+     }
+    },
+    {
+     "id": "evt_1c6eda4c2001vEgI2zEC3rCW3z",
+     "type": "session.error",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "error": {
+       "name": "UnknownError",
+       "data": {
+        "message": "{\"type\":\"overloaded_error\",\"message\":\"mid stream failure\"}"
+       }
+      }
+     }
+    },
+    {
+     "id": "evt_1c6eda4c2002SW937lO4G5bqC1",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "status": {
+       "type": "idle"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6eda4c2003Ih5KXpynkP5lA2",
+     "type": "session.idle",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc"
+     }
+    },
+    {
+     "id": "evt_1c6eda4c3001X3muFNRYpZPXua",
+     "type": "message.part.updated",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "part": {
+       "id": "prt_1c6eda4c1001omSqXXdN0GKmqc",
+       "messageID": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ",
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "type": "text",
+       "text": "",
+       "time": {
+        "start": 1794338825409,
+        "end": 1794338825411
+       }
+      },
+      "time": 1794338825411
+     }
+    },
+    {
+     "id": "evt_1c6eda4c30028aBw81mvRUC1T6",
+     "type": "message.updated",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "info": {
+       "id": "msg_1c6ec9c5c001b1Q0f5GL0iVmZJ",
+       "parentID": "msg_1c6ec9a38001FdL5CagIS7rVF5",
+       "role": "assistant",
+       "mode": "build",
+       "agent": "build",
+       "path": {
+        "cwd": "/runs/s6retry-anthropic-b/actor",
+        "root": "/"
+       },
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "modelID": "claude-sonnet-4-5",
+       "providerID": "relay",
+       "time": {
+        "created": 1794338757724,
+        "completed": 1794338825411
+       },
+       "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+       "error": {
+        "name": "UnknownError",
+        "data": {
+         "message": "{\"type\":\"overloaded_error\",\"message\":\"mid stream failure\"}"
+        }
+       }
+      }
+     }
+    },
+    {
+     "id": "evt_1c6eda4c5001Z7Dto1sY6QQmtJ",
+     "type": "session.status",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc",
+      "status": {
+       "type": "idle"
+      }
+     }
+    },
+    {
+     "id": "evt_1c6eda4c6001XCn03oZ1Cs0E7a",
+     "type": "session.idle",
+     "properties": {
+      "sessionID": "ses_e391365eaffeI8aboyLfuky2xc"
+     }
+    }
+   ]
+  }
+ }
+}

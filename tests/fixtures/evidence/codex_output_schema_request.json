@@ -1,0 +1,161 @@
+{
+ "about": "Responses request sent by the pinned Codex app-server (openai-codex 0.160.0, binary codex) for one CodexEvidenceAgent turn with outputSchema against FakeResponsesServer; captured by capture_codex_output_schema.py.",
+ "codex_cli_version": "0.160.0",
+ "include": [
+  "reasoning.encrypted_content"
+ ],
+ "input_items": [
+  {
+   "content_part_types": [],
+   "role": "developer",
+   "type": "additional_tools"
+  },
+  {
+   "content_part_types": [
+    "input_text"
+   ],
+   "role": "developer",
+   "type": "message"
+  },
+  {
+   "content_part_types": [
+    "input_text"
+   ],
+   "role": "developer",
+   "type": "message"
+  },
+  {
+   "content_part_types": [
+    "input_text"
+   ],
+   "role": "developer",
+   "type": "message"
+  },
+  {
+   "content_part_types": [
+    "input_text"
+   ],
+   "role": "developer",
+   "type": "message"
+  },
+  {
+   "content_part_types": [
+    "input_text"
+   ],
+   "role": "user",
+   "type": "message"
+  },
+  {
+   "content": [
+    {
+     "text": "evidence text",
+     "type": "input_text"
+    },
+    {
+     "image_url": "<data-url>",
+     "type": "input_image"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  }
+ ],
+ "instructions_is_base_instructions": false,
+ "model": "gpt-6.1-sol",
+ "output_schema": {
+  "additionalProperties": false,
+  "properties": {
+   "assessment": {
+    "enum": [
+     "supported",
+     "contradicted",
+     "uncertain"
+    ],
+    "type": "string"
+   },
+   "notes": {
+    "items": {
+     "additionalProperties": false,
+     "properties": {
+      "text": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "text"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "assessment",
+   "notes"
+  ],
+  "type": "object"
+ },
+ "parallel_tool_calls": false,
+ "reasoning": {
+  "context": "all_turns",
+  "effort": "high"
+ },
+ "store": false,
+ "stream": true,
+ "text": {
+  "format": {
+   "name": "codex_output_schema",
+   "schema": {
+    "additionalProperties": false,
+    "properties": {
+     "assessment": {
+      "enum": [
+       "supported",
+       "contradicted",
+       "uncertain"
+      ],
+      "type": "string"
+     },
+     "notes": {
+      "items": {
+       "additionalProperties": false,
+       "properties": {
+        "text": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "text"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "assessment",
+     "notes"
+    ],
+    "type": "object"
+   },
+   "strict": true,
+   "type": "json_schema"
+  },
+  "verbosity": "high"
+ },
+ "tool_choice": "auto",
+ "tools": null,
+ "top_level_keys": [
+  "client_metadata",
+  "include",
+  "input",
+  "model",
+  "parallel_tool_calls",
+  "prompt_cache_key",
+  "reasoning",
+  "store",
+  "stream",
+  "text",
+  "tool_choice"
+ ]
+}

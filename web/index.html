@@ -17,7 +17,7 @@
       <div id="connection-gap" role="status" hidden></div>
       <section class="task-panel" aria-label="持续会话任务与交互">
         <div class="panel-bar"><h2>持续会话</h2><span id="input-status" role="status">正在读取输入归属</span><button id="claim-input" disabled>取得输入控制</button><button id="release-input" hidden>释放控制</button></div>
-        <div class="session-state"><span id="turn-state">Codex 轮次未知</span><span id="motion-state">机器人动作未知</span></div>
+        <div class="session-state"><span id="turn-state"><span data-agent-name>Codex</span> 轮次未知</span><span id="motion-state">机器人动作未知</span></div>
         <form id="task-form"><label for="task-prompt">向当前 thread 提交任务</label><div class="task-entry"><textarea id="task-prompt" rows="2" maxlength="16000" placeholder="输入下一轮任务；前一轮与动作结束后可提交" required></textarea><button id="submit-task" type="submit" disabled>提交任务</button></div><p id="task-status" class="meta" role="status">任务由唯一运行协调器提交</p></form>
         <div id="pending-interactions" aria-live="polite"></div>
       </section>
@@ -44,11 +44,11 @@
         <section class="phase-context-panel" aria-label="阶段指令与前后文"><div class="panel-bar"><h2>本阶段 · 指令、工具与前后文</h2></div><div id="phase-context"><p class="meta">选择阶段后查看已保存的记录</p></div></section>
         </div>
         <section class="terminal-panel" aria-label="Codex 阶段回放与原始终端">
-          <div class="panel-bar"><h2>Codex · 原生 TUI</h2><div class="codex-tabs" role="tablist" aria-label="Codex 回放方式"><button id="codex-tab-terminal" role="tab" aria-selected="true" aria-controls="raw-terminal">原生 TUI</button><button id="codex-tab-records" role="tab" aria-selected="false" aria-controls="codex-replay">阶段记录</button></div></div>
+          <div class="panel-bar"><h2><span data-agent-name>Codex</span> · 原生 TUI</h2><div class="codex-tabs" role="tablist" aria-label="Codex 回放方式"><button id="codex-tab-terminal" role="tab" aria-selected="true" aria-controls="raw-terminal">原生 TUI</button><button id="codex-tab-records" role="tab" aria-selected="false" aria-controls="codex-replay">阶段记录</button></div></div>
           <p id="codex-terminal-notice" role="status" hidden></p>
-          <div id="codex-replay" hidden role="tabpanel" aria-labelledby="codex-tab-records"><p id="codex-replay-status" role="status">正在读取 Codex 记录</p><div id="codex-replay-content"></div><p class="codex-replay-note">随所选阶段显示已保存的消息、工具输入与结果；空白思考记录保留为空。</p></div>
+          <div id="codex-replay" hidden role="tabpanel" aria-labelledby="codex-tab-records"><p id="codex-replay-status" role="status">正在读取 <span data-agent-name>Codex</span> 记录</p><div id="codex-replay-content"></div><p class="codex-replay-note">随所选阶段显示已保存的消息、工具输入与结果；空白思考记录保留为空。</p></div>
           <div id="raw-terminal" role="tabpanel" aria-labelledby="codex-tab-terminal">
-          <div class="panel-bar"><h2>Codex · 原生终端</h2><span id="terminal-status" role="status">正在连接</span><button id="terminal-retry">重新读取</button><button id="terminal-bottom">回到底部</button></div>
+          <div class="panel-bar"><h2><span data-agent-name>Codex</span> · 原生终端</h2><span id="terminal-status" role="status">正在连接</span><button id="terminal-retry">重新读取</button><button id="terminal-bottom">回到底部</button></div>
           <div class="terminal-phase-link"><span id="terminal-phase-label">尚未选择阶段</span><button id="phase-terminal-jump" disabled>定位本阶段原文</button><p id="phase-terminal-status" role="status">选择阶段时尝试匹配已保存的终端原文</p></div>
           <div id="terminal"></div>
           <div class="terminal-note">只读监看 · 历史检查不会替换当前终端</div><a id="terminal-original-log" hidden>下载当时的原始终端日志</a>
@@ -75,7 +75,7 @@
         <p id="video-status" class="meta">尚无已导出的录像；录制与观测记录分别保留</p>
         <div id="video-list"></div>
       </details>
-      <details class="native-panel"><summary>Codex 结构化记录 · 消息、工具、结果与差异</summary><p id="native-status" class="meta">按原生 item 聚合；原始事件独立保留</p><ol id="native-items"></ol></details>
+      <details class="native-panel"><summary><span data-agent-name>Codex</span> 结构化记录 · 消息、工具、结果与差异</summary><p id="native-status" class="meta">按原生 item 聚合；原始事件独立保留</p><ol id="native-items"></ol></details>
       <details class="scene-panel"><summary>内部局部场景 · 版本、几何查询、快照与对齐</summary>
         <p id="scene-status" class="meta">正在读取局部场景能力</p>
         <div class="scene-controls"><label for="scene-version">不可变版本</label><select id="scene-version"></select><label for="scene-anchor">快照证据锚点</label><select id="scene-anchor"></select><button id="scene-refresh">刷新版本</button><button id="scene-snapshot" disabled>保存几何快照</button></div>

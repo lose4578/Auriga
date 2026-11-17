@@ -12,8 +12,10 @@ from unittest.mock import patch
 
 from auriga.runtime.programs.runner import ProgramRunner, model_wait, program_remaining
 from auriga.core.storage.store import Store
+from support.host_capabilities import program_isolation, require
 
 class ProgramCheck(unittest.TestCase):
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_opencv_uses_one_thread_inside_bounded_program(self):
         with tempfile.TemporaryDirectory() as temp:
             store = Store(Path(temp) / 'run', dict(run_id='test', episode_id='ep', env_instance_id='env', env_generation=1))
@@ -42,6 +44,7 @@ print('opencv_and_linalg_completed')
             self.assertIn('opencv_and_linalg_completed', result['stdout_text'])
             self.assertNotIn("Can't spawn new thread", result.get('stderr_text', ''))
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_real_client_cannot_nest_manipulation_or_other_program_tools(self):
         with tempfile.TemporaryDirectory() as temp:
             store = Store(Path(temp) / 'run', dict(run_id='test', episode_id='ep', env_instance_id='env', env_generation=1))
@@ -207,6 +210,7 @@ print(json.dumps(denied))
                                 self.assertFalse(set(owner) & {'schema_version', *identity})
                             self.assertEqual(shown['request']['stages'][0]['action']['diagnostics'], business)
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_real_client_budgets_isolation_and_reuse(self):
         with tempfile.TemporaryDirectory() as temp:
             store=Store(Path(temp)/'run',dict(run_id='test',episode_id='ep',env_instance_id='env',env_generation=1))

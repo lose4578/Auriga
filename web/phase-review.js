@@ -1,4 +1,4 @@
-import { buildPhases, mapActionVideo, clipTransition } from './phase-model.js';
+import { buildPhases, mapActionVideo, clipTransition, isNativeAgentEvent } from './phase-model.js';
 
 const $ = (id) => document.getElementById(id);
 const cameraName = (id) => ({ cam_head: '头部 · 主视角', head: '头部 · 主视角', cam_left_wrist: '左腕', cam_right_wrist: '右腕' })[id] || id;
@@ -21,7 +21,7 @@ function details(title, value, open = false) {
 }
 
 // Review uses recorded identities and PTS only. It never submits run controls.
-export function createPhaseReview({ read, artifactURL, terminal, inspectEvent, terminalReady, onPhaseChange }) {
+export function createPhaseReview({ read, artifactURL, terminal, inspectEvent, terminalReady, onPhaseChange, agentName = () => 'Codex' }) {
   const events = new Map(), actions = new Map(), actionVersions = new Map(), pending = new Set(), observationCache = new Map();
   const actionFailures = new Map();
   const navNodes = new Map(), activityNodes = new Map();
@@ -137,7 +137,7 @@ export function createPhaseReview({ read, artifactURL, terminal, inspectEvent, t
   function draw() {
     seedRecordedActions();
     const previous = phases.find((value) => value.id === selectedId);
-    phases = buildPhases([...events.values()], items, actions);
+    phases = buildPhases([...events.values()], items, actions, agentName());
     syncCameras(); renderNavigation();
     let phase = phases.find((value) => value.id === selectedId);
     if (!userSelected) phase = phases.find((value) => clipsFor(value).length) || phase;
@@ -356,7 +356,7 @@ export function createPhaseReview({ read, artifactURL, terminal, inspectEvent, t
     if (!messages?.length) section.append(node('p', '没有保存此处的说明或思考记录。', 'meta'));
     for (const item of messages || []) {
       const text = messageText(item);
-      const label = item.type === 'reasoning' ? '已记录的思考摘要' : item.type === 'userMessage' ? '用户指令' : 'Codex 说明';
+      const label = item.type === 'reasoning' ? '已记录的思考摘要' : item.type === 'userMessage' ? '用户指令' : `${agentName()} 说明`;
       section.append(node('p', label, 'phase-text-label'), node('pre', text || '此条记录未保存可见文本。'));
     }
     parent.append(section);
@@ -367,11 +367,11 @@ export function createPhaseReview({ read, artifactURL, terminal, inspectEvent, t
     const content = $('phase-context'); content.replaceChildren();
     const prompt = messageText(phase.prompt);
     content.append(details('本轮任务 / Prompt', prompt || '此阶段没有关联到已保存的用户指令。', true));
-    appendMessages(content, '执行前 · Codex 的说明与已记录思考', phase.before);
+    appendMessages(content, `执行前 · ${agentName()} 的说明与已记录思考`, phase.before);
     const current = node('section', undefined, 'phase-context-block phase-tool');
     current.append(node('h3', `当前阶段 · ${phase.title}`));
     if (phase.kind === 'codex') {
-      appendMessages(current, 'Codex 已保存的记录', phase.items);
+      appendMessages(current, `${agentName()} 已保存的记录`, phase.items);
     } else if (phase.item) {
       const item = phase.item;
       current.append(node('p', `${toolName(item)} · ${item.status || '状态未提供'}`, 'phase-tool-name'));
@@ -384,7 +384,7 @@ export function createPhaseReview({ read, artifactURL, terminal, inspectEvent, t
       for (const [key, title] of [['result','工具结果'], ['contentItems','工具返回内容'], ['aggregatedOutput','命令输出'], ['error','错误']]) {
         if (item[key] !== undefined && item[key] !== null) current.append(details(title, item[key]));
       }
-      const jump = node('button', '查看这条 Codex 原始记录'); jump.type = 'button';
+      const jump = node('button', `查看这条 ${agentName()} 原始记录`); jump.type = 'button';
       jump.onclick = () => {
         const target = [...document.querySelectorAll('#native-items > li')].find((li) => li.dataset.itemId === item.id);
         if (target) { document.querySelector('.native-panel').open = true; target.querySelector('details').open = true; target.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
@@ -398,7 +398,7 @@ export function createPhaseReview({ read, artifactURL, terminal, inspectEvent, t
       const failure = actionFailures.get(entry.action_id);
       if (failure) current.append(node('p', `部分证据读取失败：${failure.message}${failure.attempts < 3 ? ' · 正在重试' : ' · 可点击上方“刷新阶段记录”重试'}`, 'meta'));
     }
-    const relevantEvents = phase.events.filter((event) => !event.type.startsWith('codex.'));
+    const relevantEvents = phase.events.filter((event) => !isNativeAgentEvent(event.type));
     if (relevantEvents.length) {
       const list = node('div', undefined, 'phase-evidence-links');
       for (const event of relevantEvents) {
@@ -408,7 +408,7 @@ export function createPhaseReview({ read, artifactURL, terminal, inspectEvent, t
       const eventDetails = node('details'); eventDetails.append(node('summary', `本阶段 Harness 事件与证据（${relevantEvents.length}）`), list); current.append(eventDetails);
     }
     content.append(current);
-    appendMessages(content, '执行后 · Codex 的反馈与下一步说明', phase.after);
+    appendMessages(content, `执行后 · ${agentName()} 的反馈与下一步说明`, phase.after);
     content.append(node('p', '按同一轮次的记录顺序展示前后文；没有保存的思考内容不作补写。', 'meta'));
   }
 

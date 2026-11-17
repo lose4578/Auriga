@@ -20,8 +20,10 @@ from auriga.runtime.programs.runner import ProgramRunner, program_runtime
 from auriga.core.storage.store import Store
 from program_fixture import program_services
 from test_framework_candidates import WaitFixtureRobot
+from support.host_capabilities import program_isolation, require
 
 
+@require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
 class ProgramIsolationTest(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -238,6 +240,7 @@ class ProgramSandboxConfigTest(unittest.TestCase):
         self.addCleanup(runner.close)
         return harness, runner
 
+    @require(program_isolation, "bounded actor programs run under the Landlock + seccomp program sandbox")
     def test_enabled_sandbox_broker_computes_image_from_symlinked_interpreter(self):
         import io
         from PIL import Image

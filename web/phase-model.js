@@ -1,3 +1,39 @@
+// ---- Agent backend vocabulary (design 5.3). One alias map; transcript rows stay in the Codex item vocabulary. ----
+export const AGENT_EVENT_ALIASES = Object.freeze({
+  'agent.turn_started': 'codex.turn/started',
+  'agent.turn_completed': 'codex.turn/completed',
+  'agent.connection_lost': 'codex.connection_lost',
+  'agent.history_recovered': 'codex.history_recovered',
+});
+export const canonicalEventType = (type) => AGENT_EVENT_ALIASES[type] || type;
+// Replace the backend name in static markup: `[data-agent-name]` text, and title/aria-label attributes written with "Codex".
+export function applyAgentNames(root, name) {
+  for (const element of root.querySelectorAll('[data-agent-name]')) element.textContent = name;
+  for (const element of root.querySelectorAll('[title],[aria-label]')) {
+    for (const attribute of ['title', 'aria-label']) {
+      const key = attribute === 'title' ? 'agentTitle' : 'agentAria';
+      const template = element.dataset[key] ?? element.getAttribute(attribute);
+      if (template == null || !template.includes('Codex')) continue;
+      element.dataset[key] = template;
+      element.setAttribute(attribute, template.replaceAll('Codex', name));
+    }
+  }
+}
+// Any native agent event (Codex app-server `codex.*` or other backends' `agent.*`).
+export const isNativeAgentEvent = (type) => typeof type === 'string' && (type.startsWith('codex.') || type.startsWith('agent.'));
+const BACKEND_NAMES = { codex: 'Codex', claude_code: 'Claude Code', opencode: 'OpenCode' };
+// Backend kind from the run snapshot `agent_backend` (string or {kind}); absent on old runs -> 'codex'.
+export function backendKind(run) {
+  const value = run?.agent_backend;
+  const kind = typeof value === 'string' ? value : value?.kind;
+  return typeof kind === 'string' && kind ? kind : 'codex';
+}
+export const backendName = (run) => BACKEND_NAMES[backendKind(run)] || backendKind(run);
+// Turn status: `agent_status` when the server provides it, else the legacy `codex_status`.
+export const agentStatus = (run) => run?.agent_status ?? run?.codex_status;
+// The TUI tab is hidden only when the snapshot explicitly reports `terminal: null` (old runs omit the key).
+export const terminalAbsent = (run) => run?.terminal === null;
+
 // Build navigation from recorded native items and explicit event correlations.
 // Native item order is the persisted record order; event sequence positions
 // Harness actions that have no native item. No wall-clock association is made.
@@ -21,7 +57,7 @@ const normalizeAction = (action_id, value) => ({ action_id, ...(value?.action ? 
  * before/after are recorded agentMessage/reasoning items from the same thread
  * and turn, bounded by neighboring tool calls. Empty reasoning stays empty.
  */
-export function buildPhases(eventsArray = [], nativeItemsArray = [], actionsMap = new Map()) {
+export function buildPhases(eventsArray = [], nativeItemsArray = [], actionsMap = new Map(), agentName = 'Codex') {
   const items = nativeItemsArray.filter((item) => item && typeof item.id === 'string');
   const byId = new Map(items.map((item) => [item.id, item]));
   const events = eventsArray.filter(Boolean);
@@ -90,7 +126,7 @@ export function buildPhases(eventsArray = [], nativeItemsArray = [], actionsMap 
     if (tail.length) {
       const item = tail[0], related = tail.flatMap((entry) => itemEvents.get(entry.id) || []);
       phases.push({
-        id: `codex:${item.id}`, title: toolIndices.length ? 'Codex 后续记录' : 'Codex 记录', kind: 'codex',
+        id: `codex:${item.id}`, title: toolIndices.length ? `${agentName} 后续记录` : `${agentName} 记录`, kind: 'codex',
         item, items: tail, before: [], after: [], prompt: latestPrompt(group.length - 1),
         events: related, actions: [], seq: firstSeq(related), thread_id: item.thread_id, turn_id: item.turn_id,
         position: positions.get(item.id),
